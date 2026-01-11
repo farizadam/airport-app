@@ -23,9 +23,9 @@ router.post(
   validate(createBookingSchema),
   BookingController.create
 );
+// Routes for getting bookings
+router.get("/bookings/my-bookings", BookingController.getMyBookings);
 router.get("/me/bookings", BookingController.getMyBookings);
-// Alias for frontend compatibility
-router.get("/my-bookings", BookingController.getMyBookings);
 router.patch(
   "/bookings/:id",
   validate(updateBookingSchema),

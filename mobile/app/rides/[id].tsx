@@ -18,22 +18,71 @@ import {
 
 export default function RideDetailsScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = params?.id;
   const { currentRide, getRideById, isLoading } = useRideStore();
-  const { createBooking } = useBookingStore();
+  const {
+    createBooking,
+    getRideBookings,
+    rideBookings,
+    acceptBooking,
+    rejectBooking,
+    isLoading: bookingLoading,
+  } = useBookingStore();
   const { user } = useAuthStore();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [seats, setSeats] = useState("1");
+  const [actionId, setActionId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) {
-      getRideById(id as string);
+    console.log("Params:", params);
+    console.log("ID from params:", id, "Type:", typeof id);
+    if (id && typeof id === "string") {
+      console.log("Loading ride with ID:", id);
+      getRideById(id).catch((error) => {
+        console.error("Failed to load ride:", error);
+        Alert.alert("Error", "Failed to load ride details");
+      });
     }
   }, [id]);
 
   useEffect(() => {
     console.log("Current ride data:", currentRide);
-  }, [currentRide]);
+    console.log("User:", user);
+    console.log("User ID:", user?.id);
+    console.log("Driver ID:", currentRide?.driver_id);
+    console.log("IDs match:", user?.id === currentRide?.driver_id);
+    console.log(
+      "String match:",
+      String(user?.id) === String(currentRide?.driver_id)
+    );
+  }, [currentRide, user]);
+
+  useEffect(() => {
+    // Compare as strings to handle ObjectId vs string mismatch
+    const userId = String(user?.id || "");
+    const driverId = String(currentRide?.driver_id || "");
+    console.log("Checking if should load bookings:", {
+      id,
+      userId,
+      driverId,
+      match: userId === driverId,
+    });
+
+    if (
+      id &&
+      currentRide &&
+      user &&
+      userId &&
+      driverId &&
+      userId === driverId
+    ) {
+      console.log("Loading ride bookings for ride:", id);
+      getRideBookings(id as string).catch((error) => {
+        console.error("Failed to load ride bookings:", error);
+      });
+    }
+  }, [id, currentRide, user]);
 
   const handleBooking = async () => {
     if (!seats || parseInt(seats) < 1) {
@@ -56,6 +105,46 @@ export default function RideDetailsScreen() {
     }
   };
 
+  const handleAccept = async (bookingId: string) => {
+    try {
+      console.log("=== HANDLE ACCEPT START ===");
+      console.log("Booking ID to accept:", bookingId);
+      setActionId(bookingId);
+      await acceptBooking(bookingId);
+      console.log("Accept booking completed, refreshing ride...");
+      // Refresh ride details to update seat count
+      if (id) {
+        await getRideById(id);
+        console.log(
+          "Ride refreshed. Current ride seats_left:",
+          currentRide?.seats_left
+        );
+      }
+      Alert.alert("Success", "Booking accepted");
+    } catch (err: any) {
+      console.log("Handle accept error:", err);
+      Alert.alert("Error", err.message || "Failed to accept booking");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleReject = async (bookingId: string) => {
+    try {
+      setActionId(bookingId);
+      await rejectBooking(bookingId);
+      // Refresh ride details
+      if (id) {
+        await getRideById(id);
+      }
+      Alert.alert("Success", "Booking rejected");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to reject booking");
+    } finally {
+      setActionId(null);
+    }
+  };
+
   if (isLoading || !currentRide) {
     return (
       <View style={styles.loadingContainer}>
@@ -64,7 +153,8 @@ export default function RideDetailsScreen() {
     );
   }
 
-  const isOwner = user?.id === currentRide.driver_id;
+  const isOwner =
+    String(user?.id || "") === String(currentRide.driver_id || "");
   const canBook = user?.role === "passenger" || user?.role === "both";
 
   return (
@@ -170,7 +260,7 @@ export default function RideDetailsScreen() {
         {!isOwner &&
           canBook &&
           currentRide.status === "active" &&
-          currentRide.seats_left > 0 && (
+          (currentRide.seats_left ?? 0) > 0 && (
             <TouchableOpacity
               style={styles.bookButton}
               onPress={() => setBookingModalVisible(true)}
@@ -185,7 +275,7 @@ export default function RideDetailsScreen() {
               style={styles.actionButton}
               onPress={() => router.push(`/rides/${id}/bookings`)}
             >
-              <Text style={styles.actionButtonText}>View Bookings</Text>
+              <Text style={styles.actionButtonText}>View All Bookings</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -194,6 +284,84 @@ export default function RideDetailsScreen() {
             >
               <Text style={styles.actionButtonText}>Edit Ride</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Booking Requests Section for Driver */}
+        {isOwner && rideBookings && rideBookings.length > 0 && (
+          <View style={styles.bookingsSection}>
+            <Text style={styles.bookingsSectionTitle}>Booking Requests</Text>
+            {bookingLoading && (
+              <ActivityIndicator size="small" color="#2563eb" />
+            )}
+            {rideBookings.map((booking: any) => (
+              <View key={booking._id || booking.id} style={styles.bookingCard}>
+                <View style={styles.bookingHeader}>
+                  <Text style={styles.bookingPassenger}>
+                    {booking.passenger_first_name ||
+                      booking.passenger_id?.first_name ||
+                      booking.passenger?.first_name ||
+                      "Unknown"}{" "}
+                    {booking.passenger_last_name ||
+                      booking.passenger_id?.last_name ||
+                      booking.passenger?.last_name ||
+                      ""}
+                  </Text>
+                  <View
+                    style={[
+                      styles.bookingStatusBadge,
+                      booking.status === "pending" && styles.statusPending,
+                      booking.status === "accepted" && styles.statusAccepted,
+                      booking.status === "rejected" && styles.statusRejected,
+                      booking.status === "cancelled" && styles.statusCancelled,
+                    ]}
+                  >
+                    <Text style={styles.bookingStatusText}>
+                      {booking.status}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.bookingInfo}>
+                  Seats requested: {booking.seats || booking.seats_booked || 1}
+                </Text>
+                {(booking.passenger_phone ||
+                  booking.passenger_id?.phone ||
+                  booking.passenger?.phone_number) && (
+                  <Text style={styles.bookingInfo}>
+                    Phone:{" "}
+                    {booking.passenger_phone ||
+                      booking.passenger_id?.phone ||
+                      booking.passenger?.phone_number}
+                  </Text>
+                )}
+                {booking.status === "pending" && (
+                  <View style={styles.bookingActions}>
+                    <TouchableOpacity
+                      style={[styles.bookingActionBtn, styles.acceptBtn]}
+                      onPress={() => handleAccept(booking._id || booking.id)}
+                      disabled={actionId === (booking._id || booking.id)}
+                    >
+                      {actionId === (booking._id || booking.id) ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.bookingActionText}>Accept</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.bookingActionBtn, styles.rejectBtn]}
+                      onPress={() => handleReject(booking._id || booking.id)}
+                      disabled={actionId === (booking._id || booking.id)}
+                    >
+                      {actionId === (booking._id || booking.id) ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.bookingActionText}>Reject</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ))}
           </View>
         )}
       </View>
@@ -458,5 +626,88 @@ const styles = StyleSheet.create({
   modalButtonConfirmText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  // Bookings Section Styles
+  bookingsSection: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+  },
+  bookingsSectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1f2937",
+    marginBottom: 16,
+  },
+  bookingCard: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+  },
+  bookingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  bookingPassenger: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#000000",
+  },
+  bookingStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusPending: {
+    backgroundColor: "#fef3c7",
+  },
+  statusAccepted: {
+    backgroundColor: "#d1fae5",
+  },
+  statusRejected: {
+    backgroundColor: "#fee2e2",
+  },
+  statusCancelled: {
+    backgroundColor: "#f3f4f6",
+  },
+  bookingStatusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "capitalize",
+    color: "#374151",
+  },
+  bookingInfo: {
+    fontSize: 15,
+    color: "#000000",
+    marginBottom: 6,
+    fontWeight: "500",
+  },
+  bookingActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  bookingActionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  acceptBtn: {
+    backgroundColor: "#10b981",
+  },
+  rejectBtn: {
+    backgroundColor: "#ef4444",
+  },
+  bookingActionText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
   },
 });

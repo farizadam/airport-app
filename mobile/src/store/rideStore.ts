@@ -71,8 +71,9 @@ export const useRideStore = create<RideState>((set) => ({
   getRideById: async (id: string) => {
     set({ isLoading: true });
     try {
+      console.log("Fetching ride with ID:", id, "Type:", typeof id);
       const response = await api.get(`/rides/${id}`);
-      console.log("Ride data:", response.data);
+      console.log("Ride response:", response.data);
 
       // Handle both array and object responses
       const rideData =
@@ -80,10 +81,14 @@ export const useRideStore = create<RideState>((set) => ({
           ? response.data.data[0]
           : response.data.data || response.data;
 
+      console.log("Setting current ride:", rideData);
       set({ currentRide: rideData });
     } catch (error: any) {
-      console.error("Error fetching ride:", error.response?.data);
-      throw new Error(error.response?.data?.message || "Failed to load ride");
+      console.error("Error fetching ride - Full error:", error);
+      console.error("Error response data:", error.response?.data);
+      console.error("Error message:", error.message);
+      // Don't throw, just log the error
+      set({ currentRide: null });
     } finally {
       set({ isLoading: false });
     }

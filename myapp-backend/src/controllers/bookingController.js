@@ -91,6 +91,9 @@ class BookingController {
         { session }
       );
 
+      // Don't reserve seats yet - only reserve when accepted
+      // This allows multiple pending requests
+
       await session.commitTransaction();
 
       // Get full booking details for notification
@@ -102,13 +105,16 @@ class BookingController {
         });
 
       // Notify driver
-      await NotificationService.notifyBookingRequest(ride.driver_id.toString(), {
-        id: booking._id.toString(),
-        ride_id: rideId,
-        passenger_first_name: bookingWithDetails.passenger_id?.first_name,
-        passenger_last_name: bookingWithDetails.passenger_id?.last_name,
-        seats,
-      });
+      await NotificationService.notifyBookingRequest(
+        ride.driver_id.toString(),
+        {
+          id: booking._id.toString(),
+          ride_id: rideId,
+          passenger_first_name: bookingWithDetails.passenger_id?.first_name,
+          passenger_last_name: bookingWithDetails.passenger_id?.last_name,
+          seats,
+        }
+      );
 
       res.status(201).json({
         success: true,
@@ -275,18 +281,47 @@ class BookingController {
       booking.status = status;
       await booking.save({ session });
 
+      // Get the ride ID properly (handle both populated and non-populated cases)
+      const rideId = booking.ride_id._id || booking.ride_id;
+      console.log(
+        "Updating seats for ride:",
+        rideId,
+        "Old status:",
+        oldStatus,
+        "New status:",
+        status,
+        "Seats:",
+        booking.seats
+      );
+
       // Update seats_left based on status change
-      if (status === "accepted" && oldStatus === "pending") {
-        await Ride.findByIdAndUpdate(
-          booking.ride_id._id,
+      if (oldStatus === "pending" && status === "accepted") {
+        // Decrease seats when a pending booking is accepted
+        const updateResult = await Ride.findByIdAndUpdate(
+          rideId,
           { $inc: { seats_left: -booking.seats } },
-          { session }
+          { session, new: true }
         );
-      } else if (status === "cancelled" && oldStatus === "accepted") {
-        await Ride.findByIdAndUpdate(
-          booking.ride_id._id,
+        console.log(
+          "Seats decreased. New seats_left:",
+          updateResult?.seats_left
+        );
+      } else if (
+        oldStatus === "pending" &&
+        (status === "rejected" || status === "cancelled")
+      ) {
+        // No seat change needed - seats weren't reserved for pending
+        console.log("No seat change for rejected/cancelled pending booking");
+      } else if (oldStatus === "accepted" && status === "cancelled") {
+        // Release seats when an accepted booking is cancelled
+        const updateResult = await Ride.findByIdAndUpdate(
+          rideId,
           { $inc: { seats_left: booking.seats } },
-          { session }
+          { session, new: true }
+        );
+        console.log(
+          "Seats released. New seats_left:",
+          updateResult?.seats_left
         );
       }
 

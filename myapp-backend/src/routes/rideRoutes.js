@@ -46,9 +46,9 @@ router.post(
   RideController.create
 );
 
-// Dynamic routes (must come after specific routes)
-router.get("/:id", RideController.getById);
+// Dynamic routes with specific sub-routes (must come before /:id)
 router.get("/:id/bookings", authMiddleware, RideController.getRideBookings);
+router.get("/:id", RideController.getById);
 router.patch(
   "/:id",
   authMiddleware,

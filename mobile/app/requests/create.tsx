@@ -1,0 +1,644 @@
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useRequestStore } from "../../src/store/requestStore";
+import { useAirportStore } from "../../src/store/airportStore";
+import MapLocationPicker from "../../src/components/MapLocationPicker";
+
+export default function CreateRequestScreen() {
+  const router = useRouter();
+  const { createRequest, loading, error } = useRequestStore();
+  const { airports, fetchAirports } = useAirportStore();
+
+  const [airportId, setAirportId] = useState("");
+  const [direction, setDirection] = useState<"to_airport" | "from_airport">(
+    "to_airport"
+  );
+  const [location, setLocation] = useState<{
+    address: string;
+    city: string;
+    postcode: string;
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const [preferredDateTime, setPreferredDateTime] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [timeFlexibility, setTimeFlexibility] = useState("30");
+  const [seatsNeeded, setSeatsNeeded] = useState("1");
+  const [luggageCount, setLuggageCount] = useState("1");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    fetchAirports();
+  }, []);
+
+  const handleLocationSelect = (loc: any) => {
+    setLocation({
+      address: loc.address,
+      city: loc.city || "",
+      postcode: loc.postcode || "",
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    });
+    setShowMap(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!airportId) {
+      Alert.alert("Error", "Please select an airport");
+      return;
+    }
+    if (!location) {
+      Alert.alert("Error", "Please select your pickup/dropoff location");
+      return;
+    }
+
+    try {
+      await createRequest({
+        airport_id: airportId,
+        direction,
+        location_address: location.address,
+        location_city: location.city,
+        location_postcode: location.postcode,
+        location_latitude: location.latitude,
+        location_longitude: location.longitude,
+        preferred_datetime: preferredDateTime.toISOString(),
+        time_flexibility: parseInt(timeFlexibility) || 30,
+        seats_needed: parseInt(seatsNeeded) || 1,
+        luggage_count: parseInt(luggageCount) || 1,
+        max_price_per_seat: maxPrice ? parseFloat(maxPrice) : undefined,
+        notes: notes || undefined,
+      });
+
+      Alert.alert(
+        "Success",
+        "Your ride request has been posted! Drivers will see it and can make offers.",
+        [{ text: "OK", onPress: () => router.push("/requests/my-requests") }]
+      );
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <MapLocationPicker
+        visible={showMap}
+        onClose={() => setShowMap(false)}
+        onSelectLocation={handleLocationSelect}
+        initialLocation={
+          location
+            ? { latitude: location.latitude, longitude: location.longitude }
+            : { latitude: 33.5731, longitude: -7.5898 }
+        }
+        showAirports={false}
+      />
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Request a Ride</Text>
+        </View>
+
+        <Text style={styles.subtitle}>
+          Post your ride request and let drivers find you
+        </Text>
+
+        {/* Direction Selection */}
+        <Text style={styles.label}>Direction</Text>
+        <View style={styles.directionContainer}>
+          <TouchableOpacity
+            style={[
+              styles.directionButton,
+              direction === "to_airport" && styles.directionActive,
+            ]}
+            onPress={() => setDirection("to_airport")}
+          >
+            <Ionicons
+              name="airplane"
+              size={20}
+              color={direction === "to_airport" ? "#fff" : "#666"}
+            />
+            <Text
+              style={[
+                styles.directionText,
+                direction === "to_airport" && styles.directionTextActive,
+              ]}
+            >
+              To Airport
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.directionButton,
+              direction === "from_airport" && styles.directionActive,
+            ]}
+            onPress={() => setDirection("from_airport")}
+          >
+            <Ionicons
+              name="home"
+              size={20}
+              color={direction === "from_airport" ? "#fff" : "#666"}
+            />
+            <Text
+              style={[
+                styles.directionText,
+                direction === "from_airport" && styles.directionTextActive,
+              ]}
+            >
+              From Airport
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Airport Selection */}
+        <Text style={styles.label}>Airport</Text>
+        <View style={styles.airportContainer}>
+          {airports.map((airport) => (
+            <TouchableOpacity
+              key={airport._id}
+              style={[
+                styles.airportChip,
+                airportId === airport._id && styles.airportChipActive,
+              ]}
+              onPress={() => setAirportId(airport._id)}
+            >
+              <Text
+                style={[
+                  styles.airportCode,
+                  airportId === airport._id && styles.airportCodeActive,
+                ]}
+              >
+                {airport.code}
+              </Text>
+              <Text
+                style={[
+                  styles.airportName,
+                  airportId === airport._id && styles.airportNameActive,
+                ]}
+              >
+                {airport.city}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Location Selection */}
+        <Text style={styles.label}>
+          {direction === "to_airport" ? "Pickup Location" : "Dropoff Location"}
+        </Text>
+        <TouchableOpacity
+          style={styles.locationButton}
+          onPress={() => setShowMap(true)}
+        >
+          <Ionicons name="location" size={20} color="#007AFF" />
+          <Text style={styles.locationButtonText}>
+            {location ? location.address : "Select on Map"}
+          </Text>
+          <Ionicons name="chevron-forward" size={20} color="#999" />
+        </TouchableOpacity>
+
+        {/* Date & Time */}
+        <Text style={styles.label}>Preferred Date & Time</Text>
+        <View style={styles.dateTimeRow}>
+          <TouchableOpacity
+            style={styles.dateTimeButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Ionicons name="calendar" size={20} color="#007AFF" />
+            <Text style={styles.dateTimeText}>
+              {preferredDateTime.toLocaleDateString()}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.dateTimeButton}
+            onPress={() => setShowTimePicker(true)}
+          >
+            <Ionicons name="time" size={20} color="#007AFF" />
+            <Text style={styles.dateTimeText}>
+              {preferredDateTime.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={preferredDateTime}
+            mode="date"
+            minimumDate={new Date()}
+            onChange={(event, date) => {
+              setShowDatePicker(false);
+              if (date) setPreferredDateTime(date);
+            }}
+          />
+        )}
+
+        {showTimePicker && (
+          <DateTimePicker
+            value={preferredDateTime}
+            mode="time"
+            onChange={(event, date) => {
+              setShowTimePicker(false);
+              if (date) setPreferredDateTime(date);
+            }}
+          />
+        )}
+
+        {/* Time Flexibility */}
+        <Text style={styles.label}>Time Flexibility (minutes)</Text>
+        <View style={styles.flexibilityRow}>
+          {["15", "30", "60", "120"].map((min) => (
+            <TouchableOpacity
+              key={min}
+              style={[
+                styles.flexChip,
+                timeFlexibility === min && styles.flexChipActive,
+              ]}
+              onPress={() => setTimeFlexibility(min)}
+            >
+              <Text
+                style={[
+                  styles.flexChipText,
+                  timeFlexibility === min && styles.flexChipTextActive,
+                ]}
+              >
+                ±{min}min
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Seats & Luggage */}
+        <View style={styles.row}>
+          <View style={styles.halfInput}>
+            <Text style={styles.label}>Seats Needed</Text>
+            <View style={styles.counterRow}>
+              <TouchableOpacity
+                style={styles.counterButton}
+                onPress={() =>
+                  setSeatsNeeded(
+                    Math.max(1, parseInt(seatsNeeded) - 1).toString()
+                  )
+                }
+              >
+                <Ionicons name="remove" size={20} color="#007AFF" />
+              </TouchableOpacity>
+              <Text style={styles.counterValue}>{seatsNeeded}</Text>
+              <TouchableOpacity
+                style={styles.counterButton}
+                onPress={() =>
+                  setSeatsNeeded((parseInt(seatsNeeded) + 1).toString())
+                }
+              >
+                <Ionicons name="add" size={20} color="#007AFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.halfInput}>
+            <Text style={styles.label}>Luggage</Text>
+            <View style={styles.counterRow}>
+              <TouchableOpacity
+                style={styles.counterButton}
+                onPress={() =>
+                  setLuggageCount(
+                    Math.max(0, parseInt(luggageCount) - 1).toString()
+                  )
+                }
+              >
+                <Ionicons name="remove" size={20} color="#007AFF" />
+              </TouchableOpacity>
+              <Text style={styles.counterValue}>{luggageCount}</Text>
+              <TouchableOpacity
+                style={styles.counterButton}
+                onPress={() =>
+                  setLuggageCount((parseInt(luggageCount) + 1).toString())
+                }
+              >
+                <Ionicons name="add" size={20} color="#007AFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Max Price */}
+        <Text style={styles.label}>Max Price per Seat (optional)</Text>
+        <View style={styles.inputContainer}>
+          <Text style={styles.currency}>MAD</Text>
+          <TextInput
+            style={styles.priceInput}
+            placeholder="e.g., 150"
+            keyboardType="numeric"
+            value={maxPrice}
+            onChangeText={setMaxPrice}
+          />
+        </View>
+
+        {/* Notes */}
+        <Text style={styles.label}>Additional Notes (optional)</Text>
+        <TextInput
+          style={styles.notesInput}
+          placeholder="Any special requirements..."
+          multiline
+          numberOfLines={3}
+          value={notes}
+          onChangeText={setNotes}
+        />
+
+        {/* Submit Button */}
+        <TouchableOpacity
+          style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="send" size={20} color="#fff" />
+              <Text style={styles.submitText}>Post Request</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f8f9fa",
+  },
+  scrollView: {
+    flex: 1,
+    padding: 20,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    marginTop: 40,
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 24,
+    marginLeft: 40,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  directionContainer: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  directionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  directionActive: {
+    backgroundColor: "#007AFF",
+    borderColor: "#007AFF",
+  },
+  directionText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#666",
+  },
+  directionTextActive: {
+    color: "#fff",
+  },
+  airportContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  airportChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    alignItems: "center",
+  },
+  airportChipActive: {
+    backgroundColor: "#007AFF",
+    borderColor: "#007AFF",
+  },
+  airportCode: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  airportCodeActive: {
+    color: "#fff",
+  },
+  airportName: {
+    fontSize: 11,
+    color: "#666",
+  },
+  airportNameActive: {
+    color: "#e0e8ff",
+  },
+  locationButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    gap: 10,
+  },
+  locationButtonText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#333",
+  },
+  dateTimeRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  dateTimeButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#fff",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  dateTimeText: {
+    fontSize: 14,
+    color: "#333",
+  },
+  flexibilityRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  flexChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  flexChipActive: {
+    backgroundColor: "#007AFF",
+    borderColor: "#007AFF",
+  },
+  flexChipText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  flexChipTextActive: {
+    color: "#fff",
+  },
+  row: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  halfInput: {
+    flex: 1,
+  },
+  counterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    paddingVertical: 8,
+  },
+  counterButton: {
+    flex: 1,
+    alignItems: "center",
+    padding: 8,
+  },
+  counterValue: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    minWidth: 40,
+    textAlign: "center",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    paddingHorizontal: 14,
+  },
+  currency: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+    marginRight: 8,
+  },
+  priceInput: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 14,
+  },
+  notesInput: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    padding: 14,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  submitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#28a745",
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 24,
+  },
+  submitButtonDisabled: {
+    backgroundColor: "#aaa",
+  },
+  submitText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  mapHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    paddingTop: 50,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  mapTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 8,
+  },
+});

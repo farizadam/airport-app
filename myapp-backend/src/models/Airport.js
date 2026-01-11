@@ -21,6 +21,14 @@ const airportSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    latitude: {
+      type: Number,
+      default: null,
+    },
+    longitude: {
+      type: Number,
+      default: null,
+    },
     timezone: {
       type: String,
       default: "Europe/Paris",

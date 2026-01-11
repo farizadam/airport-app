@@ -25,4 +25,10 @@ router.patch(
   UserController.updateProfile
 );
 
+// Saved locations routes
+router.get("/me/locations", UserController.getSavedLocations);
+router.post("/me/locations", UserController.addSavedLocation);
+router.patch("/me/locations/:locationId", UserController.updateSavedLocation);
+router.delete("/me/locations/:locationId", UserController.deleteSavedLocation);
+
 module.exports = router;

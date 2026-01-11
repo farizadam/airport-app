@@ -1,5 +1,9 @@
 import { useAirportStore } from "@/store/airportStore";
 import { useRideStore } from "@/store/rideStore";
+import LocationPicker, { LocationData } from "@/components/LocationPicker";
+import MapLocationPicker, {
+  MapLocationData,
+} from "@/components/MapLocationPicker";
 import { format } from "date-fns";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -11,18 +15,25 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
 
 export default function SearchRidesScreen() {
   const router = useRouter();
   const { rides, searchRides, isLoading, pagination } = useRideStore();
   const { airports, fetchAirports } = useAirportStore();
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(
+    null
+  );
 
   const [filters, setFilters] = useState({
     airport_id: "",
     direction: "to_airport" as "to_airport" | "from_airport",
     date: format(new Date(), "yyyy-MM-dd"),
     home_postcode: "",
+    home_city: "",
     seats_min: "1",
     page: 1,
     limit: 10,
@@ -31,6 +42,27 @@ export default function SearchRidesScreen() {
   useEffect(() => {
     fetchAirports();
   }, []);
+
+  const handleLocationSelect = (location: LocationData) => {
+    setSelectedLocation(location);
+    setFilters((prev) => ({
+      ...prev,
+      home_postcode: location.postcode,
+      home_city: location.city,
+    }));
+  };
+
+  const handleMapLocationSelect = (location: MapLocationData) => {
+    setSelectedLocation({
+      ...location,
+      placeId: "",
+    });
+    setFilters((prev) => ({
+      ...prev,
+      home_postcode: location.postcode,
+      home_city: location.city,
+    }));
+  };
 
   const handleSearch = async () => {
     const searchFilters: any = {
@@ -43,6 +75,7 @@ export default function SearchRidesScreen() {
     if (filters.date) searchFilters.date = filters.date;
     if (filters.home_postcode)
       searchFilters.home_postcode = filters.home_postcode;
+    if (filters.home_city) searchFilters.home_city = filters.home_city;
     if (filters.seats_min)
       searchFilters.seats_min = parseInt(filters.seats_min);
 
@@ -169,14 +202,60 @@ export default function SearchRidesScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Postcode (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={filters.home_postcode}
-              onChangeText={(value) => updateFilter("home_postcode", value)}
-              placeholder="Enter postcode"
-              autoCapitalize="characters"
-            />
+            <Text style={styles.label}>
+              {filters.direction === "to_airport"
+                ? "Pickup Location"
+                : "Dropoff Location"}
+            </Text>
+
+            {/* Two buttons: Search and Map */}
+            <View style={styles.locationButtonsRow}>
+              <TouchableOpacity
+                style={styles.locationButtonHalf}
+                onPress={() => setShowLocationPicker(true)}
+              >
+                <Text style={styles.locationButtonIcon}>🔍</Text>
+                <Text style={styles.locationButtonLabel}>Search</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.locationButtonHalf}
+                onPress={() => setShowMapPicker(true)}
+              >
+                <Text style={styles.locationButtonIcon}>📍</Text>
+                <Text style={styles.locationButtonLabel}>Pin on Map</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Selected location display */}
+            {selectedLocation && (
+              <View style={styles.selectedLocationBox}>
+                <View style={styles.selectedLocationContainer}>
+                  <Text style={styles.selectedLocationText} numberOfLines={1}>
+                    {selectedLocation.address}
+                  </Text>
+                  <Text style={styles.selectedLocationDetails}>
+                    {selectedLocation.city}
+                    {selectedLocation.postcode
+                      ? ` • ${selectedLocation.postcode}`
+                      : ""}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.clearLocationButtonInline}
+                  onPress={() => {
+                    setSelectedLocation(null);
+                    setFilters((prev) => ({
+                      ...prev,
+                      home_postcode: "",
+                      home_city: "",
+                    }));
+                  }}
+                >
+                  <Text style={styles.clearLocationText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputContainer}>
@@ -224,45 +303,52 @@ export default function SearchRidesScreen() {
               </Text>
             </View>
           ) : (
-            rides.map((ride) => (
-              <TouchableOpacity
-                key={ride.id}
-                style={styles.rideCard}
-                onPress={() => router.push(`/rides/${ride.id}`)}
-              >
-                <View style={styles.rideHeader}>
-                  <Text style={styles.rideRoute}>
-                    {ride.home_city}{" "}
-                    {ride.direction === "to_airport" ? "→" : "←"}{" "}
-                    {ride.airport?.code}
-                  </Text>
-                  <Text style={styles.ridePrice}>${ride.price_per_seat}</Text>
-                </View>
+            rides.map((ride) => {
+              const rideId =
+                typeof ride.id === "string"
+                  ? ride.id
+                  : String(ride.id || ride.id);
+              return (
+                <TouchableOpacity
+                  key={rideId}
+                  style={styles.rideCard}
+                  onPress={() => router.push(`/rides/${rideId}`)}
+                >
+                  <View style={styles.rideHeader}>
+                    <Text style={styles.rideRoute}>
+                      {ride.home_city}{" "}
+                      {ride.direction === "to_airport" ? "→" : "←"}{" "}
+                      {ride.airport?.code}
+                    </Text>
+                    <Text style={styles.ridePrice}>${ride.price_per_seat}</Text>
+                  </View>
 
-                <Text style={styles.rideDate}>
-                  {format(
-                    new Date(ride.departure_datetime),
-                    "MMM d, yyyy • HH:mm"
+                  <Text style={styles.rideDate}>
+                    {ride.departure_datetime &&
+                      format(
+                        new Date(ride.departure_datetime),
+                        "MMM d, yyyy • HH:mm"
+                      )}
+                  </Text>
+
+                  <View style={styles.rideFooter}>
+                    <Text style={styles.rideSeats}>
+                      {ride.available_seats} seat
+                      {ride.available_seats !== 1 ? "s" : ""} available
+                    </Text>
+                    <Text style={styles.rideDriver}>
+                      by {ride.driver?.first_name}
+                    </Text>
+                  </View>
+
+                  {ride.driver_comment && (
+                    <Text style={styles.rideComment} numberOfLines={2}>
+                      {ride.driver_comment}
+                    </Text>
                   )}
-                </Text>
-
-                <View style={styles.rideFooter}>
-                  <Text style={styles.rideSeats}>
-                    {ride.available_seats} seat
-                    {ride.available_seats !== 1 ? "s" : ""} available
-                  </Text>
-                  <Text style={styles.rideDriver}>
-                    by {ride.driver?.first_name}
-                  </Text>
-                </View>
-
-                {ride.driver_comment && (
-                  <Text style={styles.rideComment} numberOfLines={2}>
-                    {ride.driver_comment}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+              );
+            })
           )}
 
           {pagination && pagination.totalPages > 1 && (
@@ -307,6 +393,24 @@ export default function SearchRidesScreen() {
           )}
         </View>
       </ScrollView>
+
+      <LocationPicker
+        visible={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelectLocation={handleLocationSelect}
+        placeholder={
+          filters.direction === "to_airport"
+            ? "Search pickup location..."
+            : "Search dropoff location..."
+        }
+      />
+
+      <MapLocationPicker
+        visible={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        onSelectLocation={handleMapLocationSelect}
+        showAirports={true}
+      />
     </View>
   );
 }
@@ -532,5 +636,69 @@ const styles = StyleSheet.create({
   paginationText: {
     fontSize: 14,
     color: "#6b7280",
+  },
+  locationButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 12,
+  },
+  locationButtonHalf: {
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    padding: 16,
+    backgroundColor: "#fff",
+  },
+  locationButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    padding: 16,
+    backgroundColor: "#fff",
+    marginBottom: 12,
+  },
+  locationButtonIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  locationButtonLabel: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+  },
+  selectedLocationBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "#eff6ff",
+  },
+  clearLocationButtonInline: {
+    padding: 8,
+  },
+  selectedLocationContainer: {
+    flex: 1,
+  },
+  selectedLocationText: {
+    fontSize: 16,
+    color: "#1f2937",
+    fontWeight: "500",
+  },
+  selectedLocationDetails: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  clearLocationText: {
+    fontSize: 14,
+    color: "#dc2626",
   },
 });

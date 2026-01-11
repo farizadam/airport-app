@@ -1,6 +1,5 @@
 import { useAuthStore } from "@/store/authStore";
-import { useBookingStore } from "@/store/bookingStore";
-import { useRideStore } from "@/store/rideStore";
+import { useRequestStore } from "@/store/requestStore";
 import { format } from "date-fns";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -17,14 +16,19 @@ import {
 export default function HomeScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { myRides, getMyRides } = useRideStore();
-  const { myBookings, getMyBookings } = useBookingStore();
+  const { myOffers, getMyOffers, requests, getMyRequests } = useRequestStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const isDriver = user?.role === "driver" || user?.role === "both";
+  const isPassenger = user?.role === "passenger" || user?.role === "both";
+
   const loadData = async () => {
     try {
-      await Promise.all([getMyRides(), getMyBookings()]);
+      const promises: Promise<void>[] = [];
+      if (isDriver) promises.push(getMyOffers("accepted"));
+      if (isPassenger) promises.push(getMyRequests());
+      await Promise.all(promises);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     } finally {
@@ -42,21 +46,22 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const upcomingRides = myRides.filter(
-    (ride) =>
-      ride.status === "active" && new Date(ride.departure_datetime) > new Date()
+  // Filter accepted offers (upcoming rides for driver)
+  const acceptedOffers = myOffers.filter(
+    (offer: any) =>
+      offer.status === "accepted" &&
+      new Date(offer.preferred_datetime) > new Date()
   );
 
-  const activeBookings = myBookings.filter(
-    (booking) => booking.status === "accepted" || booking.status === "pending"
+  // Filter passenger requests
+  const acceptedRequests = requests.filter(
+    (req: any) =>
+      req.status === "accepted" && new Date(req.preferred_datetime) > new Date()
   );
 
-  const pendingBookings = myBookings.filter(
-    (booking) => booking.status === "pending"
+  const pendingRequests = requests.filter(
+    (req: any) => req.status === "pending"
   );
-
-  const isDriver = user?.role === "driver" || user?.role === "both";
-  const isPassenger = user?.role === "passenger" || user?.role === "both";
 
   if (loading) {
     return (
@@ -79,6 +84,10 @@ export default function HomeScreen() {
           <Text style={styles.userName}>
             {user?.first_name} {user?.last_name}
           </Text>
+          <Text style={{ fontSize: 12, color: "#666" }}>
+            Role: {user?.role || "none"} | Driver: {isDriver ? "Yes" : "No"} |
+            Passenger: {isPassenger ? "Yes" : "No"}
+          </Text>
         </View>
         <TouchableOpacity style={styles.logoutButton} onPress={() => logout()}>
           <Text style={styles.logoutText}>Logout</Text>
@@ -88,20 +97,25 @@ export default function HomeScreen() {
       <View style={styles.statsContainer}>
         {isPassenger && (
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{activeBookings.length}</Text>
-            <Text style={styles.statLabel}>Active Bookings</Text>
+            <Text style={styles.statNumber}>{acceptedRequests.length}</Text>
+            <Text style={styles.statLabel}>Confirmed Rides</Text>
           </View>
         )}
 
         {isDriver && (
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{upcomingRides.length}</Text>
-            <Text style={styles.statLabel}>Upcoming Rides</Text>
+            <Text style={styles.statNumber}>{acceptedOffers.length}</Text>
+            <Text style={styles.statLabel}>Confirmed Rides</Text>
           </View>
         )}
 
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{pendingBookings.length}</Text>
+          <Text style={styles.statNumber}>
+            {isPassenger
+              ? pendingRequests.length
+              : myOffers.filter((o: any) => o.my_offer?.status === "pending")
+                  .length}
+          </Text>
           <Text style={styles.statLabel}>Pending</Text>
         </View>
       </View>
@@ -111,43 +125,15 @@ export default function HomeScreen() {
 
         {isPassenger && (
           <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/rides/search")}
+            style={[styles.actionButton, { backgroundColor: "#e8f5e9" }]}
+            onPress={() => router.push("/requests/create")}
           >
-            <Text style={styles.actionIcon}>🔍</Text>
+            <Text style={styles.actionIcon}>📝</Text>
             <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Search Rides</Text>
+              <Text style={styles.actionTitle}>Request a Ride</Text>
               <Text style={styles.actionDescription}>
-                Find rides to/from airports
+                Post a request for drivers
               </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {isDriver && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/rides/create")}
-          >
-            <Text style={styles.actionIcon}>➕</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Create Ride</Text>
-              <Text style={styles.actionDescription}>
-                Offer a ride to passengers
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {isDriver && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/rides/my-rides")}
-          >
-            <Text style={styles.actionIcon}>🚗</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>My Rides</Text>
-              <Text style={styles.actionDescription}>Manage your rides</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -155,19 +141,51 @@ export default function HomeScreen() {
         {isPassenger && (
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push("../bookings/index")}
+            onPress={() => router.push("/requests/my-requests")}
           >
             <Text style={styles.actionIcon}>📋</Text>
             <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>My Bookings</Text>
-              <Text style={styles.actionDescription}>View your bookings</Text>
+              <Text style={styles.actionTitle}>My Requests</Text>
+              <Text style={styles.actionDescription}>
+                View your ride requests
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {isDriver && (
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "#fff3e0" }]}
+            onPress={() => router.push("/requests/available")}
+          >
+            <Text style={styles.actionIcon}>🙋</Text>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>Passenger Requests</Text>
+              <Text style={styles.actionDescription}>
+                Find passengers looking for rides
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {isDriver && (
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "#e8f5e9" }]}
+            onPress={() => router.push("/requests/my-offers")}
+          >
+            <Text style={styles.actionIcon}>📨</Text>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>My Offers</Text>
+              <Text style={styles.actionDescription}>
+                Track your sent offers & accepted rides
+              </Text>
             </View>
           </TouchableOpacity>
         )}
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => router.push("../profile/indexes")}
+          onPress={() => router.push("/profile/")}
         >
           <Text style={styles.actionIcon}>👤</Text>
           <View style={styles.actionContent}>
@@ -177,66 +195,70 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {isDriver && upcomingRides.length > 0 && (
+      {isDriver && acceptedOffers.length > 0 && (
         <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Upcoming Rides</Text>
-          {upcomingRides.slice(0, 3).map((ride) => (
+          <Text style={styles.sectionTitle}>Upcoming Pickups</Text>
+          {acceptedOffers.slice(0, 3).map((offer: any) => (
             <TouchableOpacity
-              key={ride.id}
+              key={offer.id || offer._id}
               style={styles.rideCard}
-              onPress={() => router.push(`/rides/${ride.id}`)}
+              onPress={() => router.push(`/requests/${offer.id || offer._id}`)}
             >
-              <Text style={styles.rideRoute}>
-                {ride.home_city} {ride.direction === "to_airport" ? "→" : "←"}{" "}
-                {ride.airport?.code}
-              </Text>
+              <View style={styles.bookingHeader}>
+                <Text style={styles.rideRoute}>
+                  {offer.location_city}{" "}
+                  {offer.direction === "to_airport" ? "→" : "←"}{" "}
+                  {offer.airport?.code}
+                </Text>
+                <View style={[styles.statusBadge, styles.statusAccepted]}>
+                  <Text style={styles.statusText}>Confirmed</Text>
+                </View>
+              </View>
               <Text style={styles.rideDate}>
-                {format(new Date(ride.departure_datetime), "MMM d, yyyy HH:mm")}
+                {format(
+                  new Date(offer.preferred_datetime),
+                  "MMM d, yyyy HH:mm"
+                )}
               </Text>
               <Text style={styles.rideSeats}>
-                {ride.available_seats}/{ride.total_seats} seats available
+                {offer.passenger?.first_name} • {offer.seats_needed} seat(s) •{" "}
+                {offer.my_offer?.price_per_seat || "--"} MAD
               </Text>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      {isPassenger && activeBookings.length > 0 && (
+      {isPassenger && acceptedRequests.length > 0 && (
         <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Your Bookings</Text>
-          {activeBookings.slice(0, 3).map((booking) => (
+          <Text style={styles.sectionTitle}>Your Upcoming Rides</Text>
+          {acceptedRequests.slice(0, 3).map((request: any) => (
             <TouchableOpacity
-              key={booking.id}
+              key={request.id || request._id}
               style={styles.bookingCard}
-              onPress={() => router.push(`/rides/${booking.ride_id}`)}
+              onPress={() =>
+                router.push(`/requests/${request.id || request._id}`)
+              }
             >
               <View style={styles.bookingHeader}>
                 <Text style={styles.bookingRoute}>
-                  {booking.ride?.home_city}{" "}
-                  {booking.ride?.direction === "to_airport" ? "→" : "←"}{" "}
-                  {booking.ride?.airport?.code}
+                  {request.location_city}{" "}
+                  {request.direction === "to_airport" ? "→" : "←"}{" "}
+                  {request.airport?.code}
                 </Text>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    booking.status === "accepted"
-                      ? styles.statusAccepted
-                      : styles.statusPending,
-                  ]}
-                >
-                  <Text style={styles.statusText}>{booking.status}</Text>
+                <View style={[styles.statusBadge, styles.statusAccepted]}>
+                  <Text style={styles.statusText}>Confirmed</Text>
                 </View>
               </View>
               <Text style={styles.bookingDate}>
-                {booking.ride &&
-                  format(
-                    new Date(booking.ride.departure_datetime),
-                    "MMM d, yyyy HH:mm"
-                  )}
+                {format(
+                  new Date(request.preferred_datetime),
+                  "MMM d, yyyy HH:mm"
+                )}
               </Text>
               <Text style={styles.bookingSeats}>
-                {booking.seats} seat{booking.seats > 1 ? "s" : ""} • $
-                {booking.total_price}
+                Driver: {request.matched_driver?.first_name || "Assigned"} •{" "}
+                {request.seats_needed} seat(s)
               </Text>
             </TouchableOpacity>
           ))}

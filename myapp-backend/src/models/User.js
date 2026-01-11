@@ -1,5 +1,44 @@
 const mongoose = require("mongoose");
 
+const savedLocationSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    address: {
+      type: String,
+      required: true,
+    },
+    city: {
+      type: String,
+      required: true,
+    },
+    postcode: {
+      type: String,
+      default: null,
+    },
+    country: {
+      type: String,
+      default: null,
+    },
+    latitude: {
+      type: Number,
+      required: true,
+    },
+    longitude: {
+      type: Number,
+      required: true,
+    },
+    placeId: {
+      type: String,
+      default: null,
+    },
+  },
+  { _id: true, timestamps: true }
+);
+
 const userSchema = new mongoose.Schema(
   {
     email: {
@@ -36,6 +75,10 @@ const userSchema = new mongoose.Schema(
     avatar_url: {
       type: String,
       default: null,
+    },
+    saved_locations: {
+      type: [savedLocationSchema],
+      default: [],
     },
     deleted_at: {
       type: Date,

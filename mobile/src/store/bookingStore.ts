@@ -38,11 +38,17 @@ export const useBookingStore = create<BookingState>((set) => ({
   getRideBookings: async (rideId) => {
     try {
       set({ isLoading: true });
+      console.log("Fetching ride bookings for ride:", rideId);
       const response = await api.get<{ data: Booking[] }>(
         `/rides/${rideId}/bookings`
       );
+      console.log("Ride bookings response:", response.data);
       set({ rideBookings: response.data.data });
     } catch (error: any) {
+      console.error(
+        "Failed to get ride bookings:",
+        error.response?.data || error.message
+      );
       throw new Error(
         error.response?.data?.message || "Failed to get ride bookings"
       );
@@ -69,7 +75,7 @@ export const useBookingStore = create<BookingState>((set) => ({
 
   cancelBooking: async (bookingId) => {
     try {
-      await api.delete(`/bookings/${bookingId}`);
+      await api.patch(`/bookings/${bookingId}`, { status: "cancelled" });
       set((state) => ({
         myBookings: state.myBookings.filter(
           (booking) => booking.id !== bookingId
@@ -87,15 +93,28 @@ export const useBookingStore = create<BookingState>((set) => ({
 
   acceptBooking: async (bookingId) => {
     try {
+      console.log("=== ACCEPT BOOKING START ===");
+      console.log("Booking ID:", bookingId);
       const response = await api.patch<{ data: Booking }>(
-        `/bookings/${bookingId}/accept`
+        `/bookings/${bookingId}`,
+        { status: "accepted" }
       );
+      console.log("Accept response:", JSON.stringify(response.data, null, 2));
+      const updatedBooking = response.data.data;
+      // Update the local state
       set((state) => ({
         rideBookings: state.rideBookings.map((booking) =>
-          booking.id === bookingId ? response.data.data : booking
+          booking.id === bookingId || booking._id === bookingId
+            ? { ...booking, status: "accepted" }
+            : booking
         ),
       }));
+      console.log("=== ACCEPT BOOKING END ===");
     } catch (error: any) {
+      console.log(
+        "Accept booking error:",
+        error.response?.data || error.message
+      );
       throw new Error(
         error.response?.data?.message || "Failed to accept booking"
       );
@@ -105,11 +124,15 @@ export const useBookingStore = create<BookingState>((set) => ({
   rejectBooking: async (bookingId) => {
     try {
       const response = await api.patch<{ data: Booking }>(
-        `/bookings/${bookingId}/reject`
+        `/bookings/${bookingId}`,
+        { status: "rejected" }
       );
+      // Update the local state
       set((state) => ({
         rideBookings: state.rideBookings.map((booking) =>
-          booking.id === bookingId ? response.data.data : booking
+          booking.id === bookingId || booking._id === bookingId
+            ? { ...booking, status: "rejected" }
+            : booking
         ),
       }));
     } catch (error: any) {

@@ -101,17 +101,20 @@ export default function MyBookingsScreen() {
         </View>
       ) : (
         <View style={styles.bookingsContainer}>
-          {filteredBookings.map((booking) => (
+          {filteredBookings.map((booking: any) => (
             <View key={booking.id} style={styles.bookingCard}>
               <View style={styles.bookingHeader}>
                 <View style={styles.routeInfo}>
                   <Text style={styles.route}>
-                    {booking.ride?.home_city}{" "}
-                    {booking.ride?.direction === "to_airport" ? "→" : "←"}{" "}
-                    {booking.ride?.airport?.code}
+                    {booking.home_city || booking.ride?.home_city}{" "}
+                    {(booking.direction || booking.ride?.direction) ===
+                    "to_airport"
+                      ? "→"
+                      : "←"}{" "}
+                    {booking.airport_code || booking.ride?.airport?.code}
                   </Text>
                   <Text style={styles.airport}>
-                    {booking.ride?.airport?.name}
+                    {booking.airport_name || booking.ride?.airport?.name}
                   </Text>
                 </View>
                 <View
@@ -132,9 +135,13 @@ export default function MyBookingsScreen() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Date & Time:</Text>
                   <Text style={styles.detailValue}>
-                    {booking.ride &&
+                    {(booking.datetime_start ||
+                      booking.ride?.departure_datetime) &&
                       format(
-                        new Date(booking.ride.departure_datetime),
+                        new Date(
+                          booking.datetime_start ||
+                            booking.ride?.departure_datetime
+                        ),
                         "MMM d, yyyy • HH:mm"
                       )}
                   </Text>
@@ -148,7 +155,9 @@ export default function MyBookingsScreen() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Total Price:</Text>
                   <Text style={[styles.detailValue, styles.price]}>
-                    ${booking.total_price}
+                    $
+                    {booking.total_price ||
+                      booking.seats * (booking.price_per_seat || 0)}
                   </Text>
                 </View>
 
@@ -156,8 +165,10 @@ export default function MyBookingsScreen() {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Driver:</Text>
                     <Text style={styles.detailValue}>
-                      {booking.ride?.driver?.first_name}{" "}
-                      {booking.ride?.driver?.last_name}
+                      {booking.driver_first_name ||
+                        booking.ride?.driver?.first_name}{" "}
+                      {booking.driver_last_name ||
+                        booking.ride?.driver?.last_name}
                     </Text>
                   </View>
                 )}

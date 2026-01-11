@@ -54,7 +54,8 @@ export default function RootLayout() {
       !isOnPublicPage &&
       segments[0] !== "rides" &&
       segments[0] !== "bookings" &&
-      segments[0] !== "profile"
+      segments[0] !== "profile" &&
+      segments[0] !== "requests"
     ) {
       router.replace("/(tabs)");
     }
@@ -77,6 +78,7 @@ export default function RootLayout() {
         />
         <Stack.Screen name="bookings" options={{ title: "My Bookings" }} />
         <Stack.Screen name="profile" options={{ title: "Profile" }} />
+        <Stack.Screen name="requests" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
