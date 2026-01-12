@@ -139,7 +139,7 @@ export default function SearchRidesScreen() {
                             styles.airportOptionTextActive,
                         ]}
                       >
-                        {airport.name} ({airport.code})
+                        {airport.name} ({airport.iata_code})
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -318,7 +318,7 @@ export default function SearchRidesScreen() {
                     <Text style={styles.rideRoute}>
                       {ride.home_city}{" "}
                       {ride.direction === "to_airport" ? "→" : "←"}{" "}
-                      {ride.airport?.code}
+                      {ride.airport?.name || ride.airport?.iata_code}
                     </Text>
                     <Text style={styles.ridePrice}>${ride.price_per_seat}</Text>
                   </View>

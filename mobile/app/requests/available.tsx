@@ -10,18 +10,25 @@ import {
   TextInput,
   Modal,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRequestStore } from "../../src/store/requestStore";
 import { useAirportStore } from "../../src/store/airportStore";
+import { useAuthStore } from "../../src/store/authStore";
 
 export default function AvailableRequestsScreen() {
   const router = useRouter();
   const { availableRequests, getAvailableRequests, makeOffer, loading } =
     useRequestStore();
   const { airports, fetchAirports } = useAirportStore();
+  const { user } = useAuthStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState({
@@ -115,7 +122,9 @@ export default function AvailableRequestsScreen() {
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.airportBadge}>
-          <Text style={styles.airportCode}>{item.airport?.code}</Text>
+          <Text style={styles.airportCode}>
+            {item.airport?.name || item.airport?.iata_code}
+          </Text>
         </View>
         <View style={styles.seatsInfo}>
           <Ionicons name="people" size={16} color="#666" />
@@ -150,8 +159,12 @@ export default function AvailableRequestsScreen() {
         />
         <Text style={styles.routeText}>
           {item.direction === "to_airport"
-            ? `${item.location_city || "Location"} → ${item.airport?.code}`
-            : `${item.airport?.code} → ${item.location_city || "Location"}`}
+            ? `${item.location_city || "Location"} → ${
+                item.airport?.name || item.airport?.iata_code
+              }`
+            : `${item.airport?.name || item.airport?.iata_code} → ${
+                item.location_city || "Location"
+              }`}
         </Text>
       </View>
 
@@ -198,18 +211,29 @@ export default function AvailableRequestsScreen() {
 
       <View style={styles.actionRow}>
         <TouchableOpacity
-          style={styles.viewButton}
+          style={[
+            styles.viewButton,
+            item.has_user_offered && styles.viewButtonFull,
+          ]}
           onPress={() => router.push(`/requests/${item._id}`)}
         >
           <Text style={styles.viewButtonText}>View Details</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.offerButton}
-          onPress={() => openOfferModal(item)}
-        >
-          <Ionicons name="hand-left" size={18} color="#fff" />
-          <Text style={styles.offerButtonText}>Make Offer</Text>
-        </TouchableOpacity>
+        {!item.has_user_offered && (
+          <TouchableOpacity
+            style={styles.offerButton}
+            onPress={() => openOfferModal(item)}
+          >
+            <Ionicons name="hand-left" size={18} color="#fff" />
+            <Text style={styles.offerButtonText}>Make Offer</Text>
+          </TouchableOpacity>
+        )}
+        {item.has_user_offered && (
+          <View style={styles.offeredBadge}>
+            <Ionicons name="checkmark-circle" size={16} color="#28a745" />
+            <Text style={styles.offeredText}>Offered</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -298,7 +322,7 @@ export default function AvailableRequestsScreen() {
                       styles.airportChipActive,
                   ]}
                   onPress={() =>
-                    setFilters({ ...filters, airport_id: airport._id })
+                    setFilters({ ...filters, airport_id: airport._id || "" })
                   }
                 >
                   <Text
@@ -308,7 +332,7 @@ export default function AvailableRequestsScreen() {
                         styles.airportChipTextActive,
                     ]}
                   >
-                    {airport.code}
+                    {airport.iata_code}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -396,83 +420,102 @@ export default function AvailableRequestsScreen() {
 
       {/* Offer Modal */}
       <Modal visible={offerModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Make an Offer</Text>
-              <TouchableOpacity onPress={() => setOfferModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-
-            {selectedRequest && (
-              <>
-                <View style={styles.offerRequestInfo}>
-                  <Text style={styles.offerRequestRoute}>
-                    {selectedRequest.direction === "to_airport"
-                      ? `${selectedRequest.location_city} → ${selectedRequest.airport?.code}`
-                      : `${selectedRequest.airport?.code} → ${selectedRequest.location_city}`}
-                  </Text>
-                  <Text style={styles.offerRequestDate}>
-                    {formatDateTime(selectedRequest.preferred_datetime)}
-                  </Text>
-                  <Text style={styles.offerRequestSeats}>
-                    {selectedRequest.seats_needed} seat(s) needed
-                  </Text>
-                </View>
-
-                <Text style={styles.filterLabel}>Your Price (per seat)</Text>
-                <View style={styles.priceInputContainer}>
-                  <TextInput
-                    style={styles.priceInput}
-                    placeholder="e.g., 100"
-                    keyboardType="numeric"
-                    value={offerPrice}
-                    onChangeText={setOfferPrice}
-                  />
-                  <Text style={styles.priceUnit}>MAD</Text>
-                </View>
-
-                {selectedRequest.max_price_per_seat && (
-                  <Text style={styles.budgetHint}>
-                    Passenger's budget: up to{" "}
-                    {selectedRequest.max_price_per_seat} MAD/seat
-                  </Text>
-                )}
-
-                <Text style={styles.filterLabel}>Message (optional)</Text>
-                <TextInput
-                  style={styles.messageInput}
-                  placeholder="Introduce yourself or share pickup details..."
-                  multiline
-                  numberOfLines={3}
-                  value={offerMessage}
-                  onChangeText={setOfferMessage}
-                />
-
-                <TouchableOpacity
-                  style={[
-                    styles.submitOfferButton,
-                    submittingOffer && styles.submitOfferButtonDisabled,
-                  ]}
-                  onPress={handleSubmitOffer}
-                  disabled={submittingOffer}
-                >
-                  {submittingOffer ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="send" size={18} color="#fff" />
-                      <Text style={styles.submitOfferButtonText}>
-                        Send Offer
-                      </Text>
-                    </>
-                  )}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Make an Offer</Text>
+                <TouchableOpacity onPress={() => setOfferModalVisible(false)}>
+                  <Ionicons name="close" size={24} color="#333" />
                 </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
+              </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
+                {selectedRequest && (
+                  <>
+                    <View style={styles.offerRequestInfo}>
+                      <Text style={styles.offerRequestRoute}>
+                        {selectedRequest.direction === "to_airport"
+                          ? `${selectedRequest.location_city} → ${
+                              selectedRequest.airport?.name ||
+                              selectedRequest.airport?.iata_code
+                            }`
+                          : `${
+                              selectedRequest.airport?.name ||
+                              selectedRequest.airport?.iata_code
+                            } → ${selectedRequest.location_city}`}
+                      </Text>
+                      <Text style={styles.offerRequestDate}>
+                        {formatDateTime(selectedRequest.preferred_datetime)}
+                      </Text>
+                      <Text style={styles.offerRequestSeats}>
+                        {selectedRequest.seats_needed} seat(s) needed
+                      </Text>
+                    </View>
+
+                    <Text style={styles.filterLabel}>
+                      Your Price (per seat)
+                    </Text>
+                    <View style={styles.priceInputContainer}>
+                      <TextInput
+                        style={styles.priceInput}
+                        placeholder="e.g., 100"
+                        keyboardType="numeric"
+                        value={offerPrice}
+                        onChangeText={setOfferPrice}
+                      />
+                      <Text style={styles.priceUnit}>MAD</Text>
+                    </View>
+
+                    {selectedRequest.max_price_per_seat && (
+                      <Text style={styles.budgetHint}>
+                        Passenger's budget: up to{" "}
+                        {selectedRequest.max_price_per_seat} MAD/seat
+                      </Text>
+                    )}
+
+                    <Text style={styles.filterLabel}>Message (optional)</Text>
+                    <TextInput
+                      style={styles.messageInput}
+                      placeholder="Introduce yourself or share pickup details..."
+                      multiline
+                      numberOfLines={3}
+                      value={offerMessage}
+                      onChangeText={setOfferMessage}
+                    />
+
+                    <TouchableOpacity
+                      style={[
+                        styles.submitOfferButton,
+                        submittingOffer && styles.submitOfferButtonDisabled,
+                      ]}
+                      onPress={handleSubmitOffer}
+                      disabled={submittingOffer}
+                    >
+                      {submittingOffer ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <>
+                          <Ionicons name="send" size={18} color="#fff" />
+                          <Text style={styles.submitOfferButtonText}>
+                            Send Offer
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -679,6 +722,24 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#fff",
   },
+  viewButtonFull: {
+    flex: 2,
+  },
+  offeredBadge: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: "#e8f5e9",
+  },
+  offeredText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#28a745",
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -711,6 +772,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 40,
+    maxHeight: "90%",
   },
   modalHeader: {
     flexDirection: "row",

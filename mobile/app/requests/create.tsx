@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,6 +26,8 @@ export default function CreateRequestScreen() {
   const { airports, fetchAirports } = useAirportStore();
 
   const [airportId, setAirportId] = useState("");
+  const [airportSearch, setAirportSearch] = useState("");
+  const [showAirportDropdown, setShowAirportDropdown] = useState(false);
   const [direction, setDirection] = useState<"to_airport" | "from_airport">(
     "to_airport"
   );
@@ -179,35 +183,113 @@ export default function CreateRequestScreen() {
 
         {/* Airport Selection */}
         <Text style={styles.label}>Airport</Text>
-        <View style={styles.airportContainer}>
-          {airports.map((airport) => (
-            <TouchableOpacity
-              key={airport._id}
-              style={[
-                styles.airportChip,
-                airportId === airport._id && styles.airportChipActive,
-              ]}
-              onPress={() => setAirportId(airport._id)}
-            >
-              <Text
-                style={[
-                  styles.airportCode,
-                  airportId === airport._id && styles.airportCodeActive,
-                ]}
-              >
-                {airport.code}
-              </Text>
-              <Text
-                style={[
-                  styles.airportName,
-                  airportId === airport._id && styles.airportNameActive,
-                ]}
-              >
-                {airport.city}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <TouchableOpacity
+          style={styles.airportSelector}
+          onPress={() => setShowAirportDropdown(true)}
+        >
+          <Ionicons name="airplane" size={20} color="#007AFF" />
+          <Text style={styles.airportSelectorText}>
+            {airportId
+              ? `${airports.find((a) => a._id === airportId)?.name} (${
+                  airports.find((a) => a._id === airportId)?.iata_code
+                })`
+              : "Select an airport"}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color="#999" />
+        </TouchableOpacity>
+
+        {/* Airport Search Modal */}
+        <Modal
+          visible={showAirportDropdown}
+          animationType="slide"
+          transparent={true}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.airportModalContent}>
+              <View style={styles.airportModalHeader}>
+                <Text style={styles.airportModalTitle}>Select Airport</Text>
+                <TouchableOpacity onPress={() => setShowAirportDropdown(false)}>
+                  <Ionicons name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.airportSearchContainer}>
+                <Ionicons name="search" size={20} color="#999" />
+                <TextInput
+                  style={styles.airportSearchInput}
+                  placeholder="Search airports..."
+                  value={airportSearch}
+                  onChangeText={setAirportSearch}
+                  autoFocus
+                />
+                {airportSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAirportSearch("")}>
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <FlatList
+                data={airports.filter(
+                  (airport) =>
+                    airport.name
+                      ?.toLowerCase()
+                      .includes(airportSearch.toLowerCase()) ||
+                    airport.iata_code
+                      ?.toLowerCase()
+                      .includes(airportSearch.toLowerCase()) ||
+                    airport.city
+                      ?.toLowerCase()
+                      .includes(airportSearch.toLowerCase())
+                )}
+                keyExtractor={(item, index) =>
+                  item._id || item.id || String(index)
+                }
+                renderItem={({ item: airport }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.airportListItem,
+                      airportId === (airport._id || airport.id) &&
+                        styles.airportListItemActive,
+                    ]}
+                    onPress={() => {
+                      const id = airport._id || airport.id;
+                      if (id) setAirportId(id);
+                      setShowAirportDropdown(false);
+                      setAirportSearch("");
+                    }}
+                  >
+                    <View style={styles.airportListItemLeft}>
+                      <Text style={styles.airportListCode}>
+                        {airport.iata_code}
+                      </Text>
+                    </View>
+                    <View style={styles.airportListItemRight}>
+                      <Text style={styles.airportListName}>{airport.name}</Text>
+                      <Text style={styles.airportListCity}>
+                        {airport.city}, {airport.country}
+                      </Text>
+                    </View>
+                    {airportId === airport._id && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={24}
+                        color="#007AFF"
+                      />
+                    )}
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyAirportList}>
+                    <Text style={styles.emptyAirportText}>
+                      No airports found
+                    </Text>
+                  </View>
+                }
+              />
+            </View>
+          </View>
+        </Modal>
 
         {/* Location Selection */}
         <Text style={styles.label}>
@@ -492,6 +574,105 @@ const styles = StyleSheet.create({
   },
   airportNameActive: {
     color: "#e0e8ff",
+  },
+  airportSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    gap: 10,
+  },
+  airportSelectorText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#333",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  airportModalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+    paddingBottom: 30,
+  },
+  airportModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  airportModalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  airportSearchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
+    margin: 16,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  airportSearchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  airportListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    gap: 12,
+  },
+  airportListItemActive: {
+    backgroundColor: "#f0f7ff",
+  },
+  airportListItemLeft: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: "#007AFF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  airportListCode: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  airportListItemRight: {
+    flex: 1,
+  },
+  airportListName: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#333",
+  },
+  airportListCity: {
+    fontSize: 13,
+    color: "#666",
+    marginTop: 2,
+  },
+  emptyAirportList: {
+    padding: 30,
+    alignItems: "center",
+  },
+  emptyAirportText: {
+    fontSize: 14,
+    color: "#999",
   },
   locationButton: {
     flexDirection: "row",

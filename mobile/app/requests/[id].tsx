@@ -9,6 +9,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Linking,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -33,10 +37,15 @@ export default function RequestDetailScreen() {
     acceptOffer,
     rejectOffer,
     cancelRequest,
+    makeOffer,
     loading,
   } = useRequestStore();
   const { user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
+  const [showOfferModal, setShowOfferModal] = useState(false);
+  const [offerPrice, setOfferPrice] = useState("");
+  const [offerMessage, setOfferMessage] = useState("");
+  const [submittingOffer, setSubmittingOffer] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -100,6 +109,31 @@ export default function RequestDetailScreen() {
     ]);
   };
 
+  const handleMakeOffer = async () => {
+    if (!offerPrice || parseFloat(offerPrice) <= 0) {
+      Alert.alert("Error", "Please enter a valid price");
+      return;
+    }
+
+    setSubmittingOffer(true);
+    try {
+      await makeOffer(id!, {
+        price_per_seat: parseFloat(offerPrice),
+        message: offerMessage || undefined,
+      });
+      setShowOfferModal(false);
+      setOfferPrice("");
+      setOfferMessage("");
+      Alert.alert("Success", "Your offer has been sent to the passenger!");
+      // Refresh to show the updated state
+      await getRequest(id!);
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setSubmittingOffer(false);
+    }
+  };
+
   const handleCancelRequest = () => {
     Alert.alert(
       "Cancel Request",
@@ -154,10 +188,17 @@ export default function RequestDetailScreen() {
       o.driver?._id === user?.id ||
       o.driver?.id === user?._id
   );
-  const isDriver = !!myOffer;
+  const hasAlreadyOffered = !!myOffer;
   const isMatchedDriver =
     currentRequest.matched_driver?._id === user?._id ||
     (currentRequest.matched_driver as any)?.id === user?.id;
+
+  // Check if user can make an offer (driver role and hasn't offered yet)
+  const canMakeOffer =
+    !isOwner &&
+    !hasAlreadyOffered &&
+    currentRequest.status === "pending" &&
+    (user?.role === "driver" || user?.role === "both");
 
   const hasOffers = currentRequest.offers && currentRequest.offers.length > 0;
   const pendingOffers =
@@ -238,12 +279,27 @@ export default function RequestDetailScreen() {
         <View
           style={[
             styles.statusBanner,
-            { backgroundColor: STATUS_COLORS[currentRequest.status] },
+            {
+              backgroundColor:
+                hasAlreadyOffered && myOffer?.status === "rejected"
+                  ? "#dc3545" // Red for rejected driver
+                  : hasAlreadyOffered && myOffer?.status === "pending"
+                  ? "#ffc107" // Yellow for pending offer
+                  : hasAlreadyOffered && isMatchedDriver
+                  ? "#28a745" // Green for accepted
+                  : STATUS_COLORS[currentRequest.status],
+            },
           ]}
         >
           <Ionicons
             name={
-              currentRequest.status === "accepted"
+              hasAlreadyOffered && myOffer?.status === "rejected"
+                ? "close-circle"
+                : hasAlreadyOffered && myOffer?.status === "pending"
+                ? "time"
+                : hasAlreadyOffered && isMatchedDriver
+                ? "checkmark-circle"
+                : currentRequest.status === "accepted"
                 ? "checkmark-circle"
                 : currentRequest.status === "cancelled"
                 ? "close-circle"
@@ -253,9 +309,20 @@ export default function RequestDetailScreen() {
             color="#fff"
           />
           <Text style={styles.statusBannerText}>
-            {currentRequest.status === "pending" && hasOffers
+            {/* Driver-specific messages */}
+            {hasAlreadyOffered && myOffer?.status === "rejected"
+              ? "Your offer was not selected"
+              : hasAlreadyOffered && isMatchedDriver
+              ? "Your offer was accepted!"
+              : hasAlreadyOffered && myOffer?.status === "pending"
+              ? "Waiting for passenger response"
+              : /* Driver who can make offer */
+              canMakeOffer
+              ? "This request is open for offers"
+              : /* Owner (passenger) messages */
+              isOwner && currentRequest.status === "pending" && hasOffers
               ? `${pendingOffers.length} offer(s) waiting for your response`
-              : currentRequest.status === "pending"
+              : isOwner && currentRequest.status === "pending"
               ? "Waiting for driver offers"
               : currentRequest.status === "accepted"
               ? "Request accepted - ride confirmed!"
@@ -266,41 +333,77 @@ export default function RequestDetailScreen() {
 
         {/* Route Info */}
         <View style={styles.card}>
-          <View style={styles.routeHeader}>
-            <View style={styles.airportBadge}>
-              <Ionicons name="airplane" size={16} color="#007AFF" />
-              <Text style={styles.airportCode}>
-                {currentRequest.airport?.code}
+          {/* Route Summary */}
+          <View style={styles.routeSummary}>
+            <View style={styles.routeEndpoint}>
+              <Ionicons
+                name={
+                  currentRequest.direction === "to_airport"
+                    ? "location"
+                    : "airplane"
+                }
+                size={20}
+                color={
+                  currentRequest.direction === "to_airport"
+                    ? "#28a745"
+                    : "#007AFF"
+                }
+              />
+              <Text style={styles.routeEndpointText} numberOfLines={1}>
+                {currentRequest.direction === "to_airport"
+                  ? currentRequest.location_city || "Pickup"
+                  : currentRequest.airport?.iata_code}
               </Text>
             </View>
-            <Ionicons
-              name={
-                currentRequest.direction === "to_airport"
-                  ? "arrow-forward"
-                  : "arrow-back"
-              }
-              size={20}
-              color="#666"
-            />
+            <View style={styles.routeArrow}>
+              <Ionicons name="arrow-forward" size={18} color="#999" />
+            </View>
+            <View style={styles.routeEndpoint}>
+              <Ionicons
+                name={
+                  currentRequest.direction === "to_airport"
+                    ? "airplane"
+                    : "location"
+                }
+                size={20}
+                color={
+                  currentRequest.direction === "to_airport"
+                    ? "#007AFF"
+                    : "#28a745"
+                }
+              />
+              <Text style={styles.routeEndpointText} numberOfLines={1}>
+                {currentRequest.direction === "to_airport"
+                  ? currentRequest.airport?.iata_code
+                  : currentRequest.location_city || "Dropoff"}
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.locationRow}>
-            <Ionicons name="location" size={18} color="#28a745" />
-            <View style={styles.locationInfo}>
-              <Text style={styles.locationLabel}>
-                {currentRequest.direction === "to_airport"
-                  ? "Pickup"
-                  : "Dropoff"}
-              </Text>
-              <Text style={styles.locationAddress}>
-                {currentRequest.location_address}
-              </Text>
-              {currentRequest.location_city && (
-                <Text style={styles.locationCity}>
-                  {currentRequest.location_city}
-                </Text>
-              )}
-            </View>
+          {/* Direction Badge */}
+          <View style={styles.directionBadge}>
+            <Text style={styles.directionBadgeText}>
+              {currentRequest.direction === "to_airport"
+                ? "To Airport"
+                : "From Airport"}
+            </Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Location Details */}
+          <View style={styles.locationSection}>
+            <Text style={styles.locationSectionTitle}>
+              {currentRequest.direction === "to_airport"
+                ? "Pickup Location"
+                : "Dropoff Location"}
+            </Text>
+            <Text style={styles.locationAddress}>
+              {currentRequest.location_address}
+            </Text>
+            <Text style={styles.airportName}>
+              {currentRequest.airport?.name}
+            </Text>
           </View>
 
           <View style={styles.divider} />
@@ -382,7 +485,7 @@ export default function RequestDetailScreen() {
         </View>
 
         {/* Driver's Own Offer Section (for drivers viewing their offer) */}
-        {isDriver && !isOwner && (
+        {hasAlreadyOffered && !isOwner && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Your Offer</Text>
             <View
@@ -435,7 +538,7 @@ export default function RequestDetailScreen() {
         )}
 
         {/* Passenger Info (for drivers) */}
-        {isDriver && !isOwner && (
+        {hasAlreadyOffered && !isOwner && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Passenger</Text>
             <View style={styles.driverInfo}>
@@ -604,8 +707,118 @@ export default function RequestDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Make Offer Button (for drivers who haven't offered yet) */}
+        {canMakeOffer && (
+          <TouchableOpacity
+            style={styles.makeOfferButton}
+            onPress={() => setShowOfferModal(true)}
+          >
+            <Ionicons name="cash" size={20} color="#fff" />
+            <Text style={styles.makeOfferButtonText}>Make an Offer</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Make Offer Modal */}
+      <Modal
+        visible={showOfferModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowOfferModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.offerModalContent}>
+            <View style={styles.offerModalHeader}>
+              <Text style={styles.offerModalTitle}>Make an Offer</Text>
+              <TouchableOpacity onPress={() => setShowOfferModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.offerModalBody}>
+              {/* Request Summary */}
+              <View style={styles.offerRequestSummary}>
+                <Text style={styles.offerSummaryRoute}>
+                  {currentRequest.direction === "to_airport"
+                    ? `${currentRequest.location_city} → ${
+                        currentRequest.airport?.name ||
+                        currentRequest.airport?.iata_code
+                      }`
+                    : `${
+                        currentRequest.airport?.name ||
+                        currentRequest.airport?.iata_code
+                      } → ${currentRequest.location_city}`}
+                </Text>
+                <Text style={styles.offerSummaryDetails}>
+                  {currentRequest.seats_needed} seat(s) •{" "}
+                  {formatDateTime(currentRequest.preferred_datetime)}
+                </Text>
+                {currentRequest.max_price_per_seat && (
+                  <Text style={styles.offerSummaryMaxPrice}>
+                    Max budget: {currentRequest.max_price_per_seat} MAD/seat
+                  </Text>
+                )}
+              </View>
+
+              {/* Price Input */}
+              <Text style={styles.offerInputLabel}>
+                Your Price (per seat) *
+              </Text>
+              <View style={styles.offerPriceInputContainer}>
+                <TextInput
+                  style={styles.offerPriceInput}
+                  placeholder="e.g., 100"
+                  keyboardType="numeric"
+                  value={offerPrice}
+                  onChangeText={setOfferPrice}
+                />
+                <Text style={styles.offerPriceCurrency}>MAD</Text>
+              </View>
+              {offerPrice && currentRequest.seats_needed > 0 && (
+                <Text style={styles.offerTotalText}>
+                  Total: {parseFloat(offerPrice) * currentRequest.seats_needed}{" "}
+                  MAD
+                </Text>
+              )}
+
+              {/* Message Input */}
+              <Text style={styles.offerInputLabel}>Message (optional)</Text>
+              <TextInput
+                style={styles.offerMessageInput}
+                placeholder="Add a message to the passenger..."
+                multiline
+                numberOfLines={3}
+                value={offerMessage}
+                onChangeText={setOfferMessage}
+              />
+
+              {/* Submit Button */}
+              <TouchableOpacity
+                style={[
+                  styles.submitOfferButton,
+                  submittingOffer && styles.submitOfferButtonDisabled,
+                ]}
+                onPress={handleMakeOffer}
+                disabled={submittingOffer}
+              >
+                {submittingOffer ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="send" size={18} color="#fff" />
+                    <Text style={styles.submitOfferButtonText}>Send Offer</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -681,12 +894,70 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    overflow: "hidden",
+    zIndex: 0,
+  },
+  routeSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8f9fa",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  routeEndpoint: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  routeEndpointText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    flex: 1,
+  },
+  routeArrow: {
+    paddingHorizontal: 8,
+  },
+  directionBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#e8f4ff",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  directionBadgeText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#007AFF",
+  },
+  locationSection: {
+    marginBottom: 4,
+  },
+  locationSectionTitle: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 4,
+  },
+  locationAddress: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#333",
+    marginBottom: 4,
+  },
+  airportName: {
+    fontSize: 13,
+    color: "#007AFF",
   },
   routeHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 16,
+    zIndex: 1,
   },
   airportBadge: {
     flexDirection: "row",
@@ -696,11 +967,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    flex: 1,
+    marginRight: 10,
   },
   airportCode: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "bold",
     color: "#007AFF",
+    flexShrink: 1,
   },
   locationRow: {
     flexDirection: "row",
@@ -713,11 +987,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#666",
     marginBottom: 2,
-  },
-  locationAddress: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
   },
   locationCity: {
     fontSize: 13,
@@ -1021,5 +1290,134 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     color: "#28a745",
+  },
+  // Make Offer Button
+  makeOfferButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#28a745",
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+  },
+  makeOfferButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  // Make Offer Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  offerModalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "85%",
+  },
+  offerModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  offerModalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  offerModalBody: {
+    padding: 16,
+  },
+  offerRequestSummary: {
+    backgroundColor: "#f8f9fa",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  offerSummaryRoute: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 4,
+  },
+  offerSummaryDetails: {
+    fontSize: 14,
+    color: "#666",
+  },
+  offerSummaryMaxPrice: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#28a745",
+    marginTop: 8,
+  },
+  offerInputLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  offerPriceInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  offerPriceInput: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  offerPriceCurrency: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+  },
+  offerTotalText: {
+    fontSize: 14,
+    color: "#28a745",
+    fontWeight: "500",
+    marginBottom: 16,
+  },
+  offerMessageInput: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    padding: 14,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: "top",
+    marginBottom: 20,
+  },
+  submitOfferButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#28a745",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 30,
+  },
+  submitOfferButtonDisabled: {
+    backgroundColor: "#aaa",
+  },
+  submitOfferButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
   },
 });

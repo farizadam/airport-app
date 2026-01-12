@@ -9,6 +9,7 @@ const airportRoutes = require("./routes/airportRoutes");
 const rideRoutes = require("./routes/rideRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const rideRequestRoutes = require("./routes/rideRequestRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 
@@ -47,7 +48,9 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/airports", airportRoutes);
 app.use("/api/v1/rides", rideRoutes);
 app.use("/api/v1", bookingRoutes); // Includes /rides/:rideId/bookings and /me/bookings
+
 app.use("/api/v1/ride-requests", rideRequestRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
 
 // Health check
 app.get("/health", (req, res) => {

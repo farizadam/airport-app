@@ -2,6 +2,7 @@ const RideRequest = require("../models/RideRequest");
 const Airport = require("../models/Airport");
 const User = require("../models/User");
 const Ride = require("../models/Ride");
+const Notification = require("../models/Notification");
 
 // Create a new ride request (passenger)
 exports.createRequest = async (req, res, next) => {
@@ -28,8 +29,9 @@ exports.createRequest = async (req, res, next) => {
       return res.status(404).json({ message: "Airport not found" });
     }
 
-    // Set expiry to preferred_datetime (request expires after that)
-    const expiresAt = new Date(preferred_datetime);
+    // Set expiry to 1 hour AFTER preferred_datetime (gives drivers time to respond)
+    const preferredDate = new Date(preferred_datetime);
+    const expiresAt = new Date(preferredDate.getTime() + 60 * 60 * 1000); // +1 hour
 
     const request = await RideRequest.create({
       passenger: req.user.id,
@@ -50,6 +52,15 @@ exports.createRequest = async (req, res, next) => {
     });
 
     await request.populate(["airport", "passenger"]);
+
+    // Debug log
+    console.log("[DEBUG] Created request:", {
+      id: request._id,
+      status: request.status,
+      expires_at: request.expires_at,
+      passenger: request.passenger?._id || request.passenger,
+      preferred_datetime: request.preferred_datetime,
+    });
 
     res.status(201).json({
       message: "Ride request created successfully",
@@ -127,14 +138,41 @@ exports.getAvailableRequests = async (req, res, next) => {
     const requests = await RideRequest.find(query)
       .populate("airport")
       .populate("passenger", "first_name last_name rating")
+      .populate("offers.driver", "_id")
       .sort({ preferred_datetime: 1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
 
     const total = await RideRequest.countDocuments(query);
 
+    // Debug log
+    console.log("[DEBUG] getAvailableRequests for user:", req.user.id);
+    requests.forEach((r) => {
+      console.log("[DEBUG] Available request:", {
+        id: r._id,
+        status: r.status,
+        expires_at: r.expires_at,
+        passenger: r.passenger?._id || r.passenger,
+        preferred_datetime: r.preferred_datetime,
+      });
+    });
+
+    // Add flag to indicate if current user has already made an offer
+    const requestsWithOfferStatus = requests.map((request) => {
+      const reqObj = request.toJSON();
+      const hasOffered = reqObj.offers?.some(
+        (o) =>
+          o.driver?._id?.toString() === req.user.id ||
+          o.driver?.toString() === req.user.id
+      );
+      return {
+        ...reqObj,
+        has_user_offered: hasOffered,
+      };
+    });
+
     res.json({
-      requests,
+      requests: requestsWithOfferStatus,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -297,6 +335,57 @@ exports.makeOffer = async (req, res, next) => {
 
 // Passenger accepts an offer
 exports.acceptOffer = async (req, res, next) => {
+  console.log("[DEBUG] acceptOffer called", {
+    user: req.user?.id,
+    params: req.params,
+    body: req.body,
+  });
+
+  // Debug request found
+  const requestId = req.params.id;
+  const offer_id = req.body.offer_id;
+  const request = await RideRequest.findOne({
+    _id: requestId,
+    passenger: req.user.id,
+  });
+  console.log(
+    "[DEBUG] request found:",
+    request
+      ? {
+          id: request._id,
+          status: request.status,
+          offers: request.offers.map((o) => ({
+            _id: o._id,
+            driver: o.driver,
+            status: o.status,
+          })),
+        }
+      : null
+  );
+
+  if (!request) {
+    console.log("[DEBUG] No request found");
+  }
+
+  if (request && request.status !== "pending") {
+    console.log("[DEBUG] Request not pending", { status: request.status });
+  }
+
+  const offer = request ? request.offers.id(offer_id) : null;
+  console.log(
+    "[DEBUG] offer found:",
+    offer
+      ? {
+          _id: offer._id,
+          driver: offer.driver,
+          status: offer.status,
+        }
+      : null
+  );
+
+  if (!offer) {
+    console.log("[DEBUG] No offer found");
+  }
   try {
     const { offer_id } = req.body;
     const requestId = req.params.id;
@@ -341,6 +430,58 @@ exports.acceptOffer = async (req, res, next) => {
       "offers.driver",
     ]);
 
+    // Notify passenger (request owner) that their request was accepted
+    await Notification.create({
+      user_id: request.passenger,
+      type: "request_accepted",
+      payload: {
+        request_id: request._id,
+        driver_id: offer.driver,
+        ride_id: offer.ride,
+        message: "Your ride request has been accepted by a driver.",
+      },
+    });
+
+    // Notify the accepted driver
+    if (offer && offer.driver) {
+      const driverNotif = await Notification.create({
+        user_id: offer.driver,
+        type: "offer_accepted",
+        payload: {
+          request_id: request._id,
+          passenger_id: request.passenger,
+          ride_id: offer.ride,
+          message: "Your offer has been accepted by the passenger.",
+        },
+      });
+      console.log("[DEBUG] Created offer_accepted notification for driver:", {
+        notif_id: driverNotif._id,
+        user_id: driverNotif.user_id,
+        request_id: request._id,
+        offer_id: offer._id,
+      });
+    } else {
+      console.log(
+        "[DEBUG] Skipped driver notification: offer or offer.driver missing"
+      );
+    }
+
+    // Notify rejected drivers
+    for (const o of request.offers) {
+      if (o._id.toString() !== offer_id && o.driver) {
+        await Notification.create({
+          user_id: o.driver,
+          type: "offer_rejected",
+          payload: {
+            request_id: request._id,
+            passenger_id: request.passenger,
+            ride_id: o.ride,
+            message: "Your offer was not accepted.",
+          },
+        });
+      }
+    }
+
     res.json({
       message: "Offer accepted successfully",
       request,
@@ -372,6 +513,20 @@ exports.rejectOffer = async (req, res, next) => {
 
     offer.status = "rejected";
     await request.save();
+
+    // Notify the driver that their offer was rejected
+    if (offer.driver) {
+      await Notification.create({
+        user_id: offer.driver,
+        type: "offer_rejected",
+        payload: {
+          request_id: request._id,
+          passenger_id: request.passenger,
+          ride_id: offer.ride,
+          message: "Your offer was rejected by the passenger.",
+        },
+      });
+    }
 
     res.json({
       message: "Offer rejected",

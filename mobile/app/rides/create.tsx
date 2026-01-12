@@ -246,7 +246,9 @@ export default function CreateRideScreen() {
                       setAirportSearch("");
                     }}
                   >
-                    <Text style={styles.airportCodeText}>{airport.code}</Text>
+                    <Text style={styles.airportCodeText}>
+                      {airport.iata_code}
+                    </Text>
                     <View>
                       <Text style={styles.airportNameText}>{airport.name}</Text>
                       <Text style={styles.airportCityText}>

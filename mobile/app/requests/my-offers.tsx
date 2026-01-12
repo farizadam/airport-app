@@ -78,10 +78,10 @@ export default function MyOffersScreen() {
         <Text style={styles.statusText}>{getOfferStatusText(item)}</Text>
       </View>
 
-      {/* Header */}
+      {/* Header: Airport IATA code and direction */}
       <View style={styles.cardHeader}>
         <View style={styles.airportBadge}>
-          <Text style={styles.airportCode}>{item.airport?.code}</Text>
+          <Text style={styles.airportCode}>{item.airport?.iata_code}</Text>
         </View>
         <View style={styles.directionBadge}>
           <Ionicons
@@ -115,24 +115,22 @@ export default function MyOffersScreen() {
         </View>
       </View>
 
-      {/* Route */}
+      {/* Concise Route */}
       <View style={styles.routeContainer}>
-        <View style={styles.routeRow}>
-          <Ionicons name="location" size={16} color="#28a745" />
-          <Text style={styles.routeText} numberOfLines={1}>
-            {item.location_city}
-          </Text>
-        </View>
         <Ionicons
-          name="arrow-forward"
-          size={14}
-          color="#999"
-          style={styles.arrowIcon}
+          name={item.direction === "to_airport" ? "car" : "airplane"}
+          size={16}
+          color="#28a745"
         />
-        <View style={styles.routeRow}>
-          <Ionicons name="airplane" size={16} color="#007AFF" />
-          <Text style={styles.routeText}>{item.airport?.name}</Text>
-        </View>
+        <Text style={styles.routeText} numberOfLines={1}>
+          {item.direction === "to_airport"
+            ? `${item.location_city || "Location"} → ${
+                item.airport?.name || item.airport?.iata_code
+              }`
+            : `${item.airport?.name || item.airport?.iata_code} → ${
+                item.location_city || "Location"
+              }`}
+        </Text>
       </View>
 
       {/* Details */}
@@ -247,7 +245,7 @@ export default function MyOffersScreen() {
         <FlatList
           data={myOffers}
           renderItem={renderOffer}
-          keyExtractor={(item) => item.id || item._id}
+          keyExtractor={(item) => item._id}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

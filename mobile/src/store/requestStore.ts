@@ -29,7 +29,7 @@ interface RideRequest {
   airport: {
     _id: string;
     name: string;
-    code: string;
+    iata_code: string;
     city: string;
   };
   direction: "to_airport" | "from_airport";

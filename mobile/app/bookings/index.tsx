@@ -111,7 +111,10 @@ export default function MyBookingsScreen() {
                     "to_airport"
                       ? "→"
                       : "←"}{" "}
-                    {booking.airport_code || booking.ride?.airport?.code}
+                    {booking.airport_name ||
+                      booking.ride?.airport?.name ||
+                      booking.airport_code ||
+                      booking.ride?.airport?.iata_code}
                   </Text>
                   <Text style={styles.airport}>
                     {booking.airport_name || booking.ride?.airport?.name}

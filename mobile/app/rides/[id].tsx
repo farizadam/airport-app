@@ -180,8 +180,10 @@ export default function RideDetailsScreen() {
 
         <View style={styles.infoSection}>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Airport Code:</Text>
-            <Text style={styles.infoValue}>{currentRide.airport?.code}</Text>
+            <Text style={styles.infoLabel}>Airport:</Text>
+            <Text style={styles.infoValue}>
+              {currentRide.airport?.name || currentRide.airport?.iata_code}
+            </Text>
           </View>
 
           <View style={styles.infoRow}>

@@ -69,7 +69,9 @@ export default function MyRequestsScreen() {
       >
         <View style={styles.cardHeader}>
           <View style={styles.airportBadge}>
-            <Text style={styles.airportCode}>{item.airport?.code}</Text>
+            <Text style={styles.airportCode}>
+              {item.airport?.name || item.airport?.iata_code}
+            </Text>
           </View>
           <View
             style={[
@@ -90,9 +92,9 @@ export default function MyRequestsScreen() {
           <Text style={styles.routeText}>
             {item.direction === "to_airport"
               ? `${item.location_city || item.location_address} → ${
-                  item.airport?.code
+                  item.airport?.name || item.airport?.iata_code
                 }`
-              : `${item.airport?.code} → ${
+              : `${item.airport?.name || item.airport?.iata_code} → ${
                   item.location_city || item.location_address
                 }`}
           </Text>

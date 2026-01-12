@@ -62,7 +62,9 @@ export default function MyRidesScreen() {
             >
               <Text style={styles.rideRoute}>
                 {ride.home_city} {ride.direction === "to_airport" ? "→" : "←"}{" "}
-                {ride.airport_code || ride.airport?.code}
+                {ride.airport?.name ||
+                  ride.airport_code ||
+                  ride.airport?.iata_code}
               </Text>
               <Text style={styles.ridePrice}>${ride.price_per_seat}/seat</Text>
               <Text style={styles.rideDate}>

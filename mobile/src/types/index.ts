@@ -15,7 +15,7 @@ export interface Airport {
   id: string;
   _id?: string;
   name: string;
-  code: string;
+  iata_code: string;
   city: string;
   country: string;
   latitude?: number;

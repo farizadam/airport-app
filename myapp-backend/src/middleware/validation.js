@@ -35,7 +35,10 @@ const validationRules = {
   firstName: Joi.string().min(2).max(100).trim().required(),
   lastName: Joi.string().min(2).max(100).trim().required(),
   phone: Joi.string()
-    .pattern(/^\+?[1-9]\d{1,14}$/)
+    .min(6)
+    .max(20)
+    .pattern(/^[0-9+\-\s()]+$/)
+    .message("Please enter a valid phone number")
     .required(),
   role: Joi.string().valid("driver", "passenger", "both").required(),
   objectId: Joi.string()
