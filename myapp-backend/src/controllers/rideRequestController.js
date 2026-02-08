@@ -3,6 +3,7 @@ const Airport = require("../models/Airport");
 const User = require("../models/User");
 const Ride = require("../models/Ride");
 const Notification = require("../models/Notification");
+const redis = require("../config/redisClient");
 
 // Create a new ride request (passenger)
 exports.createRequest = async (req, res, next) => {
@@ -64,6 +65,22 @@ exports.createRequest = async (req, res, next) => {
       preferred_datetime: request.preferred_datetime,
     });
 
+    // Invalidate cache - remove all related cache keys using patterns
+    if (redis) {
+      // Invalidate user's own request cache (all pages and statuses)
+      const userRequestKeys = await redis.keys(
+        `user_requests:${req.user.id}:*`,
+      );
+      if (userRequestKeys.length > 0) {
+        await redis.del(userRequestKeys);
+      }
+      // Invalidate all available requests cache (affects all drivers)
+      const availableKeys = await redis.keys(`available_requests:*`);
+      if (availableKeys.length > 0) {
+        await redis.del(availableKeys);
+      }
+    }
+
     res.status(201).json({
       message: "Ride request created successfully",
       request,
@@ -102,7 +119,9 @@ exports.updateRequest = async (req, res, next) => {
     }
 
     if (request.status !== "pending") {
-      return res.status(400).json({ message: "Cannot update a request that is not pending" });
+      return res
+        .status(400)
+        .json({ message: "Cannot update a request that is not pending" });
     }
 
     // Update fields
@@ -133,7 +152,8 @@ exports.updateRequest = async (req, res, next) => {
     if (time_flexibility) request.time_flexibility = time_flexibility;
     if (seats_needed) request.seats_needed = seats_needed;
     if (luggage_count !== undefined) request.luggage_count = luggage_count;
-    if (max_price_per_seat !== undefined) request.max_price_per_seat = max_price_per_seat;
+    if (max_price_per_seat !== undefined)
+      request.max_price_per_seat = max_price_per_seat;
     if (notes !== undefined) request.notes = notes;
 
     await request.save();
@@ -152,6 +172,16 @@ exports.updateRequest = async (req, res, next) => {
 exports.getMyRequests = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
+    const cacheKey = `user_requests:${req.user.id}:${status || "all"}:${page}`;
+
+    // Try cache first
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log("[CACHE HIT] getMyRequests");
+        return res.json(JSON.parse(cached));
+      }
+    }
 
     const query = { passenger: req.user.id };
     if (status) query.status = status;
@@ -168,7 +198,7 @@ exports.getMyRequests = async (req, res, next) => {
 
     const total = await RideRequest.countDocuments(query);
 
-    res.json({
+    const response = {
       requests,
       pagination: {
         page: parseInt(page),
@@ -176,7 +206,14 @@ exports.getMyRequests = async (req, res, next) => {
         total,
         totalPages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    // Cache for 5 minutes
+    if (redis) {
+      await redis.setex(cacheKey, 300, JSON.stringify(response));
+    }
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -197,7 +234,15 @@ exports.getAvailableRequests = async (req, res, next) => {
       limit = 10,
     } = req.query;
 
-    console.log("[getAvailableRequests] Query params:", { airport_id, direction, date, city, latitude, longitude, radius });
+    console.log("[getAvailableRequests] Query params:", {
+      airport_id,
+      direction,
+      date,
+      city,
+      latitude,
+      longitude,
+      radius,
+    });
 
     const query = {
       status: "pending",
@@ -207,10 +252,12 @@ exports.getAvailableRequests = async (req, res, next) => {
 
     if (airport_id) query.airport = airport_id;
     if (direction) query.direction = direction;
-    
+
     // Geospatial Search - find requests within radius of search location
     if (latitude && longitude) {
-      console.log(`📍 Performing geospatial search for requests near [${latitude}, ${longitude}] with radius ${radius}m`);
+      console.log(
+        `📍 Performing geospatial search for requests near [${latitude}, ${longitude}] with radius ${radius}m`,
+      );
       query.location = {
         $near: {
           $geometry: {
@@ -233,13 +280,28 @@ exports.getAvailableRequests = async (req, res, next) => {
       query.preferred_datetime = { $gte: startDate, $lte: endDate };
     }
 
-    console.log("[getAvailableRequests] Final query:", JSON.stringify(query, null, 2));
+    console.log(
+      "[getAvailableRequests] Final query:",
+      JSON.stringify(query, null, 2),
+    );
 
     // Note: When using $near, MongoDB automatically sorts by distance
     // So we only add explicit sort when NOT using geospatial search
     let sortOption = { preferred_datetime: 1 };
     if (latitude && longitude) {
       sortOption = {}; // $near handles sorting by distance
+    }
+
+    // Create cache key based on search params
+    const cacheKey = `available_requests:${airport_id}:${direction}:${date}:${city}:${page}`;
+
+    // Try cache first
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log("[CACHE HIT] getAvailableRequests");
+        return res.json(JSON.parse(cached));
+      }
     }
 
     const requests = await RideRequest.find(query)
@@ -273,7 +335,7 @@ exports.getAvailableRequests = async (req, res, next) => {
       const hasOffered = reqObj.offers?.some(
         (o) =>
           o.driver?._id?.toString() === req.user.id ||
-          o.driver?.toString() === req.user.id
+          o.driver?.toString() === req.user.id,
       );
       return {
         ...reqObj,
@@ -281,7 +343,7 @@ exports.getAvailableRequests = async (req, res, next) => {
       };
     });
 
-    res.json({
+    const response = {
       requests: requestsWithOfferStatus,
       pagination: {
         page: parseInt(page),
@@ -289,7 +351,14 @@ exports.getAvailableRequests = async (req, res, next) => {
         total,
         totalPages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    // Cache for 2 minutes
+    if (redis) {
+      await redis.setex(cacheKey, 120, JSON.stringify(response));
+    }
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -300,6 +369,17 @@ exports.getMyOffers = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
     const userId = req.user.id;
+
+    const cacheKey = `driver_offers:${userId}:${status || "all"}:${page}`;
+
+    // Try cache first
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log("[CACHE HIT] getMyOffers");
+        return res.json(JSON.parse(cached));
+      }
+    }
 
     // Find requests where this driver has made an offer or is matched
     let query = {
@@ -340,7 +420,7 @@ exports.getMyOffers = async (req, res, next) => {
       const myOffer = reqObj.offers?.find(
         (o) =>
           o.driver?._id?.toString() === userId ||
-          o.driver?.toString() === userId
+          o.driver?.toString() === userId,
       );
       return {
         ...reqObj,
@@ -349,7 +429,7 @@ exports.getMyOffers = async (req, res, next) => {
       };
     });
 
-    res.json({
+    const response = {
       requests: requestsWithOfferInfo,
       pagination: {
         page: parseInt(page),
@@ -357,7 +437,14 @@ exports.getMyOffers = async (req, res, next) => {
         total,
         totalPages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    // Cache for 2 minutes
+    if (redis) {
+      await redis.setex(cacheKey, 120, JSON.stringify(response));
+    }
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -403,7 +490,7 @@ exports.makeOffer = async (req, res, next) => {
 
     // Check if driver already made an offer
     const existingOffer = request.offers.find(
-      (o) => o.driver.toString() === req.user.id
+      (o) => o.driver.toString() === req.user.id,
     );
     if (existingOffer) {
       return res
@@ -431,8 +518,23 @@ exports.makeOffer = async (req, res, next) => {
     await request.save();
     await request.populate(
       "offers.driver",
-      "first_name last_name phone rating"
+      "first_name last_name phone rating",
     );
+
+    // Invalidate driver's offers cache
+    if (redis) {
+      const driverOfferKeys = await redis.keys(
+        `driver_offers:${req.user.id}:*`,
+      );
+      if (driverOfferKeys.length > 0) {
+        await redis.del(driverOfferKeys);
+      }
+      // Also invalidate available requests cache since this request now has an offer
+      const availableKeys = await redis.keys(`available_requests:*`);
+      if (availableKeys.length > 0) {
+        await redis.del(availableKeys);
+      }
+    }
 
     res.json({
       message: "Offer sent successfully",
@@ -470,7 +572,7 @@ exports.acceptOffer = async (req, res, next) => {
             status: o.status,
           })),
         }
-      : null
+      : null,
   );
 
   if (!request) {
@@ -490,7 +592,7 @@ exports.acceptOffer = async (req, res, next) => {
           driver: offer.driver,
           status: offer.status,
         }
-      : null
+      : null,
   );
 
   if (!offer) {
@@ -572,7 +674,7 @@ exports.acceptOffer = async (req, res, next) => {
       });
     } else {
       console.log(
-        "[DEBUG] Skipped driver notification: offer or offer.driver missing"
+        "[DEBUG] Skipped driver notification: offer or offer.driver missing",
       );
     }
 
@@ -606,18 +708,23 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
   const Wallet = require("../models/Wallet");
   const Transaction = require("../models/Transaction");
   const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-  
+
   try {
     const { offer_id, payment_method, payment_intent_id } = req.body;
     const requestId = req.params.id;
     const userId = req.user.id;
 
-    console.log("Accept offer with payment:", { requestId, offer_id, payment_method, userId });
+    console.log("Accept offer with payment:", {
+      requestId,
+      offer_id,
+      payment_method,
+      userId,
+    });
 
     const request = await RideRequest.findOne({
       _id: requestId,
       passenger: userId,
-    }).populate('airport');
+    }).populate("airport");
 
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
@@ -637,17 +744,25 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
     }
 
     // Calculate total amount
-    const totalAmount = Math.round(offer.price_per_seat * request.seats_needed * 100); // in cents
-    const platformFeePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
+    const totalAmount = Math.round(
+      offer.price_per_seat * request.seats_needed * 100,
+    ); // in cents
+    const platformFeePercent = parseFloat(
+      process.env.PLATFORM_FEE_PERCENT || "10",
+    );
     const platformFee = Math.round(totalAmount * (platformFeePercent / 100));
     const driverEarnings = totalAmount - platformFee;
 
-    console.log("Payment calculation:", { totalAmount, platformFee, driverEarnings });
+    console.log("Payment calculation:", {
+      totalAmount,
+      platformFee,
+      driverEarnings,
+    });
 
-    if (payment_method === 'wallet') {
+    if (payment_method === "wallet") {
       // Get passenger's wallet
       const passengerWallet = await Wallet.getOrCreateWallet(userId);
-      
+
       // Check if passenger has enough balance
       if (passengerWallet.balance < totalAmount) {
         return res.status(400).json({
@@ -657,114 +772,124 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
           required_display: (totalAmount / 100).toFixed(2),
           available: passengerWallet.balance,
           available_display: (passengerWallet.balance / 100).toFixed(2),
-          code: "INSUFFICIENT_BALANCE"
+          code: "INSUFFICIENT_BALANCE",
         });
       }
-      
+
       // Deduct from passenger wallet
       passengerWallet.balance -= totalAmount;
       await passengerWallet.save();
-      
+
       // Get passenger info
       const passenger = await User.findById(userId);
       const driver = await User.findById(offer.driver);
-      
+
       // Create transaction record for passenger (debit)
       await Transaction.create({
         wallet_id: passengerWallet._id,
         user_id: userId,
-        type: 'ride_payment',
+        type: "ride_payment",
         amount: -totalAmount,
         gross_amount: totalAmount,
         fee_amount: 0,
         fee_percentage: 0,
         net_amount: totalAmount,
-        currency: 'EUR',
-        status: 'completed',
-        reference_type: 'ride',
+        currency: "EUR",
+        status: "completed",
+        reference_type: "ride",
         reference_id: request._id,
         description: `Payment for ride request - ${request.seats_needed} seat(s)`,
         ride_details: {
           ride_id: offer.ride || request._id,
           booking_id: request._id,
           driver_id: offer.driver,
-          driver_name: driver?.name || `${driver?.first_name} ${driver?.last_name}` || 'Driver',
+          driver_name:
+            driver?.name ||
+            `${driver?.first_name} ${driver?.last_name}` ||
+            "Driver",
           seats: request.seats_needed,
           price_per_seat: offer.price_per_seat,
-          route: `${request.location_city || 'Origin'} → ${request.airport?.name || 'Airport'}`,
+          route: `${request.location_city || "Origin"} → ${request.airport?.name || "Airport"}`,
         },
         processed_at: new Date(),
       });
-      
+
       // Credit driver's wallet
       const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
       await driverWallet.addEarnings(driverEarnings, false);
-      
+
       // Create transaction record for driver (credit)
       await Transaction.create({
         wallet_id: driverWallet._id,
         user_id: offer.driver,
-        type: 'ride_earning',
+        type: "ride_earning",
         amount: driverEarnings,
         gross_amount: totalAmount,
         fee_amount: platformFee,
         fee_percentage: platformFeePercent,
         net_amount: driverEarnings,
-        currency: 'EUR',
-        status: 'completed',
-        reference_type: 'ride',
+        currency: "EUR",
+        status: "completed",
+        reference_type: "ride",
         reference_id: request._id,
         description: `Earnings from wallet payment - ${request.seats_needed} seat(s)`,
         ride_details: {
           ride_id: offer.ride || request._id,
           booking_id: request._id,
           passenger_id: userId,
-          passenger_name: passenger?.name || `${passenger?.first_name} ${passenger?.last_name}` || 'Passenger',
+          passenger_name:
+            passenger?.name ||
+            `${passenger?.first_name} ${passenger?.last_name}` ||
+            "Passenger",
           seats: request.seats_needed,
           price_per_seat: offer.price_per_seat,
-          route: `${request.location_city || 'Origin'} → ${request.airport?.name || 'Airport'}`,
+          route: `${request.location_city || "Origin"} → ${request.airport?.name || "Airport"}`,
         },
         processed_at: new Date(),
       });
-      
-      console.log(`Wallet payment completed: ${totalAmount} cents from passenger, ${driverEarnings} cents to driver`);
-      
-    } else if (payment_method === 'card') {
+
+      console.log(
+        `Wallet payment completed: ${totalAmount} cents from passenger, ${driverEarnings} cents to driver`,
+      );
+    } else if (payment_method === "card") {
       // Verify payment with Stripe
       if (!payment_intent_id) {
-        return res.status(400).json({ message: "Payment intent ID required for card payment" });
+        return res
+          .status(400)
+          .json({ message: "Payment intent ID required for card payment" });
       }
-      
-      const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
-      
-      if (paymentIntent.status !== 'succeeded') {
-        return res.status(400).json({ 
-          message: `Payment not completed. Status: ${paymentIntent.status}` 
+
+      const paymentIntent =
+        await stripe.paymentIntents.retrieve(payment_intent_id);
+
+      if (paymentIntent.status !== "succeeded") {
+        return res.status(400).json({
+          message: `Payment not completed. Status: ${paymentIntent.status}`,
         });
       }
-      
+
       console.log("Card payment verified:", paymentIntent.id);
-      
+
       // Credit driver's wallet (if driver doesn't have Stripe Connect)
       const driver = await User.findById(offer.driver);
       if (!driver?.stripeAccountId) {
         const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
         await driverWallet.addEarnings(driverEarnings, false);
-        
+
         const passenger = await User.findById(userId);
-        
+
         await Transaction.create({
           wallet_id: driverWallet._id,
           user_id: offer.driver,
-          type: 'ride_earning',
+          type: "ride_earning",
           amount: driverEarnings,
           gross_amount: totalAmount,
           fee_amount: platformFee,
           fee_percentage: platformFeePercent,
           net_amount: driverEarnings,
-          currency: 'EUR',
-          status: 'completed',
-          reference_type: 'ride',
+          currency: "EUR",
+          status: "completed",
+          reference_type: "ride",
           reference_id: request._id,
           stripe_payment_intent_id: payment_intent_id,
           description: `Earnings from ride request - ${request.seats_needed} seat(s)`,
@@ -772,15 +897,20 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
             ride_id: offer.ride || request._id,
             booking_id: request._id,
             passenger_id: userId,
-            passenger_name: passenger?.name || `${passenger?.first_name} ${passenger?.last_name}` || 'Passenger',
+            passenger_name:
+              passenger?.name ||
+              `${passenger?.first_name} ${passenger?.last_name}` ||
+              "Passenger",
             seats: request.seats_needed,
             price_per_seat: offer.price_per_seat,
-            route: `${request.location_city || 'Origin'} → ${request.airport?.name || 'Airport'}`,
+            route: `${request.location_city || "Origin"} → ${request.airport?.name || "Airport"}`,
           },
           processed_at: new Date(),
         });
-        
-        console.log(`Card payment credited to driver wallet: ${driverEarnings} cents`);
+
+        console.log(
+          `Card payment credited to driver wallet: ${driverEarnings} cents`,
+        );
       }
     } else {
       return res.status(400).json({ message: "Invalid payment method" });
@@ -850,6 +980,27 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
       }
     }
 
+    // Invalidate relevant caches
+    if (redis) {
+      // Invalidate passenger's request cache
+      const userRequestKeys = await redis.keys(`user_requests:${userId}:*`);
+      if (userRequestKeys.length > 0) {
+        await redis.del(userRequestKeys);
+      }
+      // Invalidate driver's offers cache
+      const driverOfferKeys = await redis.keys(
+        `driver_offers:${offer.driver}:*`,
+      );
+      if (driverOfferKeys.length > 0) {
+        await redis.del(driverOfferKeys);
+      }
+      // Invalidate available requests cache
+      const availableKeys = await redis.keys(`available_requests:*`);
+      if (availableKeys.length > 0) {
+        await redis.del(availableKeys);
+      }
+    }
+
     res.json({
       success: true,
       message: "Offer accepted and payment processed successfully",
@@ -858,7 +1009,7 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
         method: payment_method,
         amount: totalAmount,
         amount_display: (totalAmount / 100).toFixed(2),
-      }
+      },
     });
   } catch (error) {
     console.error("Accept offer with payment error:", error);
@@ -903,6 +1054,24 @@ exports.rejectOffer = async (req, res, next) => {
       });
     }
 
+    // Invalidate relevant caches
+    if (redis) {
+      // Invalidate passenger's request cache
+      const userRequestKeys = await redis.keys(
+        `user_requests:${req.user.id}:*`,
+      );
+      if (userRequestKeys.length > 0) {
+        await redis.del(userRequestKeys);
+      }
+      // Invalidate driver's offers cache
+      const driverOfferKeys = await redis.keys(
+        `driver_offers:${offer.driver}:*`,
+      );
+      if (driverOfferKeys.length > 0) {
+        await redis.del(driverOfferKeys);
+      }
+    }
+
     res.json({
       message: "Offer rejected",
       request,
@@ -944,7 +1113,7 @@ exports.withdrawOffer = async (req, res, next) => {
     }
 
     const offerIndex = request.offers.findIndex(
-      (o) => o.driver.toString() === req.user.id && o.status === "pending"
+      (o) => o.driver.toString() === req.user.id && o.status === "pending",
     );
 
     if (offerIndex === -1) {

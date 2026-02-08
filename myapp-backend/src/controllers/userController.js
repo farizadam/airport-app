@@ -69,7 +69,7 @@ class UserController {
         _id: userId,
         deleted_at: null,
       }).select(
-        "first_name last_name avatar_url date_of_birth bio languages car_model car_color rating rating_count trips_completed createdAt phone"
+        "first_name last_name avatar_url date_of_birth bio languages car_model car_color rating rating_count trips_completed createdAt phone",
       );
 
       if (!user) {
@@ -107,8 +107,10 @@ class UserController {
               const driverId = ride.driver_id?.toString();
               // Check if they're connected through this ride
               if (
-                (driverId === userId && sharedBooking.passenger_id.toString() === currentUserId) ||
-                (driverId === currentUserId && sharedBooking.passenger_id.toString() === userId)
+                (driverId === userId &&
+                  sharedBooking.passenger_id.toString() === currentUserId) ||
+                (driverId === currentUserId &&
+                  sharedBooking.passenger_id.toString() === userId)
               ) {
                 canSeePhone = true;
               }
@@ -370,6 +372,14 @@ class UserController {
         });
       }
 
+      // Cloudinary is required
+      if (!process.env.CLOUDINARY_URL) {
+        return res.status(500).json({
+          success: false,
+          message: "Image upload service not configured",
+        });
+      }
+
       // Validate base64 image (should start with data:image/)
       if (!image.startsWith("data:image/")) {
         return res.status(400).json({
@@ -390,82 +400,56 @@ class UserController {
         });
       }
 
-      // If Cloudinary configured, upload to Cloudinary and save URL + public_id
-      if (process.env.CLOUDINARY_URL) {
-        try {
-          console.log(
-            `Uploading avatar for user=${userId} size=${sizeInBytes}bytes`,
-          );
-          const preview = image.slice(0, 120);
-          console.log(`Avatar payload preview: ${preview.replace(/\n/g, "")}`);
-
-          const uploadResult = await cloudinary.uploader.upload(image, {
-            folder: "avatars",
-            resource_type: "image",
-          });
-
-          const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            {
-              avatar_url: uploadResult.secure_url,
-              avatar_public_id: uploadResult.public_id,
-            },
-            { new: true },
-          ).select("-password_hash");
-
-          return res.status(200).json({
-            success: true,
-            message: "Avatar uploaded successfully",
-            data: updatedUser,
-          });
-        } catch (err) {
-          // Detailed logging for debugging Cloudinary failures
-          try {
-            const details = {
-              userId,
-              message: err && err.message,
-              name: err && err.name,
-              http_code: err && err.http_code,
-              request_id: err && err.request_id,
-            };
-            console.error(
-              "Cloudinary upload failed",
-              details,
-              err && err.stack,
-            );
-          } catch (logErr) {
-            console.error(
-              "Cloudinary upload failed, and logging failed:",
-              logErr,
-            );
-          }
-
-          return res.status(500).json({
-            success: false,
-            message: "Failed to upload avatar",
-          });
-        }
-      }
-      // If Cloudinary not configured, log that we are using DB fallback
-      else {
-        console.warn(
-          "CLOUDINARY_URL not set — storing avatar base64 in DB for user=",
-          userId,
+      // Upload to Cloudinary (required)
+      try {
+        console.log(
+          `Uploading avatar for user=${userId} size=${sizeInBytes}bytes`,
         );
+        const preview = image.slice(0, 120);
+        console.log(`Avatar payload preview: ${preview.replace(/\n/g, "")}`);
+
+        const uploadResult = await cloudinary.uploader.upload(image, {
+          folder: "avatars",
+          resource_type: "image",
+        });
+
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          {
+            avatar_url: uploadResult.secure_url,
+            avatar_public_id: uploadResult.public_id,
+          },
+          { new: true },
+        ).select("-password_hash");
+
+        return res.status(200).json({
+          success: true,
+          message: "Avatar uploaded successfully",
+          data: updatedUser,
+        });
+      } catch (err) {
+        // Detailed logging for debugging Cloudinary failures
+        try {
+          const details = {
+            userId,
+            message: err && err.message,
+            name: err && err.name,
+            http_code: err && err.http_code,
+            request_id: err && err.request_id,
+          };
+          console.error("Cloudinary upload failed", details, err && err.stack);
+        } catch (logErr) {
+          console.error(
+            "Cloudinary upload failed, and logging failed:",
+            logErr,
+          );
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload avatar",
+        });
       }
-
-      // Fallback: store base64 data in DB
-      const updatedUser = await User.findByIdAndUpdate(
-        userId,
-        { avatar_url: image, avatar_public_id: null },
-        { new: true },
-      ).select("-password_hash");
-
-      res.status(200).json({
-        success: true,
-        message: "Avatar uploaded successfully",
-        data: updatedUser,
-      });
     } catch (error) {
       next(error);
     }
@@ -562,7 +546,7 @@ class UserController {
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         { email: emailNormalized, email_verified: true },
-        { new: true }
+        { new: true },
       ).select("-password_hash");
 
       // Clean up the OTP record
@@ -634,12 +618,12 @@ class UserController {
       // Update the phone number and firebase_uid
       const updatedUser = await User.findByIdAndUpdate(
         userId,
-        { 
-          phone: phoneNumber, 
+        {
+          phone: phoneNumber,
           phone_verified: true,
-          firebase_uid: firebaseUid 
+          firebase_uid: firebaseUid,
         },
-        { new: true }
+        { new: true },
       ).select("-password_hash");
 
       res.status(200).json({

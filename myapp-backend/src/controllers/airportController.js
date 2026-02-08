@@ -11,18 +11,9 @@ class AirportController {
 
       const filter = { is_active: true };
 
-      if (country) {
-        filter.country = country;
-      }
-
-      // Text Search
+      // Text Search using MongoDB text index
       if (q) {
-        const regex = new RegExp(q, "i");
-        filter.$or = [
-          { name: regex },
-          { iata_code: regex },
-          { city: regex },
-        ];
+        filter.$text = { $search: q };
       }
 
       // Geospatial Search
@@ -38,14 +29,25 @@ class AirportController {
         };
       }
 
-      // If no search params, limit strictly to avoid dumping 5000 records
-      // But if user wants full list for country, let them? 
-      // 842 is manageable, but let's limit to 100 for general queries
-      const limit = q || (latitude && longitude) ? 100 : 842;
+      if (country) {
+        filter.country = country;
+      }
 
-      const airports = await Airport.find(filter)
-        .sort({ name: 1 })
-        .limit(limit);
+      // Determine limit based on query specificity
+      const limit = q || country || (latitude && longitude) ? 100 : 50;
+
+      let query = Airport.find(filter).limit(limit);
+
+      // Add text score sorting if text search was used
+      if (q) {
+        query = query
+          .select({ score: { $meta: "textScore" } })
+          .sort({ score: { $meta: "textScore" } });
+      } else {
+        query = query.sort({ name: 1 });
+      }
+
+      const airports = await query;
 
       res.status(200).json({
         success: true,

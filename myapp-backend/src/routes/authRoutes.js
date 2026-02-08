@@ -15,7 +15,6 @@ const registerSchema = Joi.object({
   role: validationRules.role,
   firebase_token: Joi.string().required(),
   firebase_token: Joi.string().optional(),
-  id_image: Joi.string().optional(),
   id_image_front: Joi.string().optional(),
   id_image_back: Joi.string().optional(),
 });
@@ -34,7 +33,7 @@ router.post("/verify-email-otp", EmailOtpController.verifyEmailOtp);
 router.post("/login", validate(loginSchema), AuthController.login);
 router.post("/google", AuthController.googleLogin); // Google login endpoint
 router.post("/refresh", AuthController.refresh);
-router.post("/logout", authMiddleware, AuthController.logout);
+router.post("/logout", AuthController.logout);
 router.get("/me", authMiddleware, AuthController.getMe);
 router.delete("/me", authMiddleware, AuthController.deleteAccount);
 

@@ -20,16 +20,20 @@ try {
 
 class AuthController {
   /**
-   * Helper: Process images to Buffer and Cloudinary
+   * Helper: Process images to Cloudinary only
    */
   static async processImage(dataUri) {
-    if (!dataUri) return { buffer: null, url: null, contentType: null };
+    if (!dataUri) return { url: null };
+
+    // Cloudinary is required
+    if (!process.env.CLOUDINARY_URL) {
+      throw new Error("Cloudinary is not configured. Cannot process images.");
+    }
 
     const match = dataUri.match(/^data:(image\/jpeg|image\/png);base64,(.+)$/);
     if (!match)
       throw new Error("Invalid image format. Use PNG or JPG base64 data URI.");
 
-    const contentType = match[1];
     const b64 = match[2];
     const sizeInBytes =
       (b64.length * 3) / 4 -
@@ -77,22 +81,20 @@ class AuthController {
         throw new Error("ID image too large (max 5MB)");
       }
     }
-    let url = null;
 
-    if (process.env.CLOUDINARY_URL) {
-      try {
-        const uploadResult = await cloudinary.uploader.upload(dataUri, {
-          folder: "user_ids",
-        });
-        url = uploadResult.secure_url;
-      } catch (e) {
-        console.error(
-          "Cloudinary upload failed, falling back to DB storage only.",
-        );
-      }
+    // Upload to Cloudinary (required)
+    try {
+      const uploadResult = await cloudinary.uploader.upload(dataUri, {
+        folder: "user_ids",
+      });
+      return {
+        url: uploadResult.secure_url,
+        public_id: uploadResult.public_id,
+      };
+    } catch (e) {
+      console.error("Cloudinary upload failed", e);
+      throw new Error("Failed to upload image to Cloudinary");
     }
-
-    return { data: buffer, contentType, url };
   }
 
   /**
@@ -183,7 +185,7 @@ class AuthController {
           .status(409)
           .json({ success: false, message: "User already exists" });
 
-      // 4. Process Images
+      // 4. Process Images (Cloudinary only)
       let front, back;
       try {
         const imgStart = Date.now();
@@ -213,14 +215,11 @@ class AuthController {
         firebase_uid: firebaseUid,
         phone_verified: !!firebaseUid,
         email_verified: true,
-        id_image_front: front.data
-          ? { data: front.data, contentType: front.contentType }
-          : null,
-        id_image_back: back.data
-          ? { data: back.data, contentType: back.contentType }
-          : null,
+        // Store Cloudinary URLs and public IDs
         id_image_front_url: front.url,
+        id_image_front_public_id: front.public_id,
         id_image_back_url: back.url,
+        id_image_back_public_id: back.public_id,
         // Ensure avatar fields exist so client/profile endpoints don't fail
         avatar_url: null,
         avatar_public_id: null,

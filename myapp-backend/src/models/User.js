@@ -123,17 +123,23 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    id_image_url: {
+    id_image_front_url: {
       type: String,
       default: null,
     },
-    id_image_front: {
-      data: { type: Buffer, default: null },
-      contentType: { type: String, default: null },
+    id_image_back_url: {
+      type: String,
+      default: null,
     },
-    id_image_back: {
-      data: { type: Buffer, default: null },
-      contentType: { type: String, default: null },
+    id_image_front_public_id: {
+      type: String,
+      default: null,
+      description: "Cloudinary public ID for front ID image",
+    },
+    id_image_back_public_id: {
+      type: String,
+      default: null,
+      description: "Cloudinary public ID for back ID image",
     },
     stripeAccountId: {
       type: String,

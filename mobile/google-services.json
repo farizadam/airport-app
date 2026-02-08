@@ -1,26 +1,87 @@
 {
   "project_info": {
-    "project_number": "879099107110",
-    "project_id": "airsaiid",
-    "storage_bucket": "airsaiid.firebasestorage.app"
+    "project_number": "992263093914",
+    "project_id": "airport-app-b0741",
+    "storage_bucket": "airport-app-b0741.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:879099107110:android:20ed58e72b60eaae2cd3e7",
+        "mobilesdk_app_id": "1:992263093914:android:1f424ad48b4ae023076923",
         "android_client_info": {
-          "package_name": "com.saidare.mobile"
+          "package_name": "com.farizadam.airport_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "992263093914-rlvd4kq0t5686koqrc3caqtlpjntrb3q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyAaw_-fuHLMIcRQd3qucvyEGdcwUuyNZmU"
+          "current_key": "AIzaSyDkEXMwiFF37G7QMLPPOWsTuRr7FNxot6c"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "992263093914-rlvd4kq0t5686koqrc3caqtlpjntrb3q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "992263093914-b56qbc979evh7e5ubafrs63uumvo60dn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.company.airportapp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:992263093914:android:53373a92d0d400b3076923",
+        "android_client_info": {
+          "package_name": "com.farizadam.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "992263093914-3uj45ksnipajntao169td2k12qu0q365.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.farizadam.mobile",
+            "certificate_hash": "ff8859c1c896211d7dd0299678fc05eb1fa82f03"
+          }
+        },
+        {
+          "client_id": "992263093914-rlvd4kq0t5686koqrc3caqtlpjntrb3q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkEXMwiFF37G7QMLPPOWsTuRr7FNxot6c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "992263093914-rlvd4kq0t5686koqrc3caqtlpjntrb3q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "992263093914-b56qbc979evh7e5ubafrs63uumvo60dn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.company.airportapp"
+              }
+            }
+          ]
         }
       }
     }

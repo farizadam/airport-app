@@ -71,10 +71,17 @@ const airportSchema = new mongoose.Schema(
   {
     timestamps: true,
     toJSON: { virtuals: true },
-  }
+  },
 );
 
 airportSchema.index({ location: "2dsphere" });
+// Text search index for name, city, iata_code, and icao_code
+airportSchema.index({
+  name: "text",
+  city: "text",
+  iata_code: "text",
+  icao_code: "text",
+});
 
 const Airport = mongoose.model("Airport", airportSchema);
 

@@ -42,10 +42,14 @@ class RideController {
       rideData.seats_left = rideData.seats_total;
 
       // Ensure coordinates are numbers
-      if (rideData.home_latitude) rideData.home_latitude = parseFloat(rideData.home_latitude);
-      if (rideData.home_longitude) rideData.home_longitude = parseFloat(rideData.home_longitude);
+      if (rideData.home_latitude)
+        rideData.home_latitude = parseFloat(rideData.home_latitude);
+      if (rideData.home_longitude)
+        rideData.home_longitude = parseFloat(rideData.home_longitude);
 
-      console.log(`📍 Coordinates received: [${rideData.home_latitude}, ${rideData.home_longitude}]`);
+      console.log(
+        `📍 Coordinates received: [${rideData.home_latitude}, ${rideData.home_longitude}]`,
+      );
 
       // Calculate Route
       if (rideData.home_latitude && rideData.home_longitude) {
@@ -74,7 +78,7 @@ class RideController {
           console.log(
             "✅ Route calculated with",
             route.coordinates ? route.coordinates.length : 0,
-            "points"
+            "points",
           );
         } catch (routeError) {
           console.error("❌ Route calculation failed:", routeError);
@@ -83,8 +87,8 @@ class RideController {
             type: "LineString",
             coordinates: [
               [origin.lng, origin.lat],
-              [destination.lng, destination.lat]
-            ]
+              [destination.lng, destination.lat],
+            ],
           };
           console.log("⚠️ Using straight line fallback route");
         }
@@ -93,11 +97,13 @@ class RideController {
       }
 
       const ride = await Ride.create(rideData);
-      
+
       // Populate and transform the ride to match getMyRides format
-      const populatedRide = await Ride.findById(ride._id)
-        .populate("airport_id", "name iata_code");
-      
+      const populatedRide = await Ride.findById(ride._id).populate(
+        "airport_id",
+        "name iata_code",
+      );
+
       // Map direction back to frontend format
       let frontendDirection = populatedRide.direction;
       if (populatedRide.direction === "home_to_airport") {
@@ -105,7 +111,7 @@ class RideController {
       } else if (populatedRide.direction === "airport_to_home") {
         frontendDirection = "from_airport";
       }
-      
+
       const transformedRide = {
         ...populatedRide.toJSON(),
         id: populatedRide._id.toString(),
@@ -169,7 +175,12 @@ class RideController {
         mappedDirection = "airport_to_home";
       }
 
-      console.log("[RideSearch] Direction mapping:", direction, "->", mappedDirection);
+      console.log(
+        "[RideSearch] Direction mapping:",
+        direction,
+        "->",
+        mappedDirection,
+      );
 
       const filter = {
         airport_id,
@@ -179,12 +190,15 @@ class RideController {
       if (mappedDirection) filter.direction = mappedDirection;
       if (seats_min) filter.seats_left = { $gte: parseInt(seats_min) };
 
-      console.log("[RideSearch] Filter being applied:", JSON.stringify(filter, null, 2));
+      console.log(
+        "[RideSearch] Filter being applied:",
+        JSON.stringify(filter, null, 2),
+      );
 
       // Geospatial Search (Route Matching)
       if (latitude && longitude) {
         console.log(
-          `📍 Performing geospatial search near [${latitude}, ${longitude}] with radius ${radius}m`
+          `📍 Performing geospatial search near [${latitude}, ${longitude}] with radius ${radius}m`,
         );
         filter.route = {
           $near: {
@@ -223,12 +237,12 @@ class RideController {
       delete debugFilter.direction;
       const allRidesForDate = await Ride.find(debugFilter);
       console.log(
-        `Debug: Found ${allRidesForDate.length} rides without direction filter`
+        `Debug: Found ${allRidesForDate.length} rides without direction filter`,
       );
       if (allRidesForDate.length > 0) {
         console.log(
           "Sample ride directions:",
-          allRidesForDate.map((r) => ({ id: r._id, direction: r.direction }))
+          allRidesForDate.map((r) => ({ id: r._id, direction: r.direction })),
         );
       }
 
@@ -240,15 +254,41 @@ class RideController {
       // $near automatically sorts by distance, and adding another sort can error or override it
       let sort = { datetime_start: 1 };
       if (latitude && longitude) {
-        sort = {}; 
+        sort = {};
       }
 
-      const rides = await Ride.find(filter)
-        .populate("driver_id", "first_name last_name avatar_url")
-        .populate("airport_id", "name iata_code city latitude longitude")
-        .sort(sort)
-        .limit(limitNum)
-        .skip(skip);
+      // OPTIMIZED: Use aggregation pipeline with $lookup (one query instead of N+1)
+      const rides = await Ride.aggregate([
+        { $match: filter },
+        { $sort: sort },
+        { $skip: skip },
+        { $limit: limitNum },
+        {
+          $lookup: {
+            from: "users",
+            localField: "driver_id",
+            foreignField: "_id",
+            as: "driver_id",
+          },
+        },
+        { $unwind: { path: "$driver_id", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "airports",
+            localField: "airport_id",
+            foreignField: "_id",
+            as: "airport_id",
+          },
+        },
+        { $unwind: { path: "$airport_id", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            route: 0, // Exclude heavy geometry
+            "driver_id.password": 0,
+            "driver_id.email": 0,
+          },
+        },
+      ]);
 
       console.log(`Found ${rides.length} rides`);
 
@@ -263,7 +303,7 @@ class RideController {
         }
 
         return {
-          ...ride.toJSON(),
+          ...ride,
           id: ride._id.toString(),
           departure_datetime: ride.datetime_start,
           direction: frontendDirection,
@@ -401,63 +441,81 @@ class RideController {
       const limitNum = Math.min(parseInt(limit), 100);
       const skip = (pageNum - 1) * limitNum;
 
-      const rides = await Ride.find({ driver_id: driverId })
-        .populate("airport_id", "name iata_code")
-        .sort({ datetime_start: -1 })
-        .limit(limitNum)
-        .skip(skip);
+      // Optimized: Use aggregation pipeline to fetch rides with bookings in one query
+      const rides = await Ride.aggregate([
+        { $match: { driver_id: new mongoose.Types.ObjectId(driverId) } },
+        { $sort: { datetime_start: -1 } },
+        { $skip: skip },
+        { $limit: limitNum },
+        {
+          $lookup: {
+            from: "airports",
+            localField: "airport_id",
+            foreignField: "_id",
+            as: "airport_id",
+          },
+        },
+        { $unwind: { path: "$airport_id", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "bookings",
+            localField: "_id",
+            foreignField: "ride_id",
+            as: "bookings",
+          },
+        },
+        {
+          $addFields: {
+            pending_count: {
+              $size: {
+                $filter: {
+                  input: "$bookings",
+                  as: "booking",
+                  cond: { $eq: ["$$booking.status", "pending"] },
+                },
+              },
+            },
+            accepted_count: {
+              $size: {
+                $filter: {
+                  input: "$bookings",
+                  as: "booking",
+                  cond: { $eq: ["$$booking.status", "accepted"] },
+                },
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            route: 0, // Exclude heavy route geometry
+          },
+        },
+      ]);
 
       console.log(`📊 Found ${rides.length} rides for driver ${driverId}`);
 
-      // Enrich with booking info (pending + accepted) so driver sees requests
-      const transformedRides = await Promise.all(
-        rides.map(async (ride) => {
-          // Map direction back to frontend format
-          let frontendDirection = ride.direction;
-          if (ride.direction === "home_to_airport") {
-            frontendDirection = "to_airport";
-          } else if (ride.direction === "airport_to_home") {
-            frontendDirection = "from_airport";
-          }
+      // Transform results
+      const transformedRides = rides.map((ride) => {
+        let frontendDirection = ride.direction;
+        if (ride.direction === "home_to_airport") {
+          frontendDirection = "to_airport";
+        } else if (ride.direction === "airport_to_home") {
+          frontendDirection = "from_airport";
+        }
 
-          // Fetch bookings for this ride
-          const bookings = await Booking.find({ ride_id: ride._id })
-            .populate("passenger_id", "first_name last_name phone avatar_url")
-            .sort({ createdAt: -1 })
-            .lean();
-
-          const bookingSummaries = bookings.map((b) => ({
-            id: b._id.toString(),
-            status: b.status,
-            seats: b.seats,
-            passenger_first_name: b.passenger_id?.first_name,
-            passenger_last_name: b.passenger_id?.last_name,
-            passenger_phone: b.passenger_id?.phone,
-            passenger_avatar: b.passenger_id?.avatar_url,
-          }));
-
-          const pending_count = bookings.filter(
-            (b) => b.status === "pending"
-          ).length;
-          const accepted_count = bookings.filter(
-            (b) => b.status === "accepted"
-          ).length;
-
-          return {
-            ...ride.toJSON(),
-            id: ride._id.toString(),
-            departure_datetime: ride.datetime_start,
-            direction: frontendDirection,
-            available_seats: ride.seats_left,
-            driver_comment: ride.comment,
-            airport_name: ride.airport_id?.name,
-            airport_code: ride.airport_id?.iata_code,
-            bookings: bookingSummaries,
-            pending_count,
-            accepted_count,
-          };
-        })
-      );
+        return {
+          ...ride,
+          id: ride._id.toString(),
+          departure_datetime: ride.datetime_start,
+          direction: frontendDirection,
+          available_seats: ride.seats_left,
+          driver_comment: ride.comment,
+          airport_name: ride.airport_id?.name,
+          airport_code: ride.airport_id?.iata_code,
+          bookings: [],
+        };
+      });
 
       console.log(`✅ Returning ${transformedRides.length} transformed rides`);
       res.status(200).json({
@@ -551,7 +609,7 @@ class RideController {
       const cancelledRide = await Ride.findByIdAndUpdate(
         id,
         { status: "cancelled" },
-        { new: true }
+        { new: true },
       );
 
       if (!cancelledRide) {
@@ -564,7 +622,7 @@ class RideController {
       // Cancel all associated bookings
       const result = await Booking.updateMany(
         { ride_id: id, status: { $in: ["pending", "accepted"] } },
-        { status: "cancelled" }
+        { status: "cancelled" },
       );
 
       // Get all affected bookings for notifications
@@ -581,7 +639,7 @@ class RideController {
             id: existingRide._id.toString(),
             airport_name: existingRide.airport_id?.name,
             datetime_start: existingRide.datetime_start,
-          }
+          },
         );
       }
 
@@ -653,7 +711,7 @@ class RideController {
   static async getRoutePreview(req, res, next) {
     try {
       const { origin, destination } = req.body;
-      
+
       if (!origin || !destination) {
         return res.status(400).json({
           success: false,
@@ -662,11 +720,11 @@ class RideController {
       }
 
       const route = await MapService.getRoute(origin, destination);
-      
+
       // Transform GeoJSON coordinates [lng, lat] to { latitude, longitude } for frontend
-      const frontendCoordinates = route.coordinates.map(coord => ({
+      const frontendCoordinates = route.coordinates.map((coord) => ({
         latitude: coord[1],
-        longitude: coord[0]
+        longitude: coord[0],
       }));
 
       res.status(200).json({
