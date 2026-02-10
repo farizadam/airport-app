@@ -7,9 +7,14 @@ function initFirebaseAdmin() {
   if (admin.apps && admin.apps.length) return admin.app();
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
-    );
+    // Fix: Railway/cloud env vars convert \n to actual newlines in the JSON string,
+    // which corrupts the private_key field. Replace real newlines back to \n first.
+    const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.replace(/\n/g, '\\n');
+    const serviceAccount = JSON.parse(rawJson);
+    // Restore actual newlines in private_key (PEM format requires them)
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
