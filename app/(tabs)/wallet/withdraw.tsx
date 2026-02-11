@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useWalletStore } from "@/store/walletStore";
+import { toast } from "../../../src/store/toastStore";
 
 export default function WithdrawScreen() {
   const router = useRouter();
@@ -84,10 +85,7 @@ export default function WithdrawScreen() {
     if (!validateAmount(amount)) return;
 
     if (!bankStatus?.connected || !bankStatus?.verified) {
-      Alert.alert(
-        "Bank Account Required",
-        "Please connect and verify your bank account before withdrawing."
-      );
+      toast.warning("Bank Account Required", "Please connect and verify your bank account before withdrawing.");
       return;
     }
 
@@ -104,13 +102,10 @@ export default function WithdrawScreen() {
             const result = await requestWithdrawal(amountInCents);
 
             if (result.success) {
-              Alert.alert(
-                "Withdrawal Initiated",
-                "Your withdrawal has been initiated. It typically takes 2-3 business days to arrive in your bank account.",
-                [{ text: "OK", onPress: () => router.back() }]
-              );
+              toast.success("Withdrawal Initiated", "Your withdrawal has been initiated. It typically takes 2-3 business days to arrive in your bank account.");
+              router.back();
             } else {
-              Alert.alert("Withdrawal Failed", result.message);
+              toast.error("Withdrawal Failed", result.message);
             }
           },
         },

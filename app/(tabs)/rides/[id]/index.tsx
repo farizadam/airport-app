@@ -7,6 +7,7 @@ import ProfileAvatar from "../../../../src/components/ProfileAvatar";
 import { format } from "date-fns";
 import { useStripe } from "@stripe/stripe-react-native";
 import { api } from "../../../../src/lib/api";
+import { toast } from "../../../../src/store/toastStore";
 import {
   useLocalSearchParams,
   useRouter,
@@ -49,7 +50,7 @@ export default function RideDetailsScreen() {
         paymentIntentClientSecret: clientSecret,
       });
       if (initResult.error) {
-        Alert.alert(
+        toast.error(
           "Error",
           initResult.error.message || "Failed to initialize payment",
         );
@@ -59,18 +60,18 @@ export default function RideDetailsScreen() {
       // Present payment sheet
       const paymentResult = await presentPaymentSheet();
       if (paymentResult.error) {
-        Alert.alert(
+        toast.error(
           "Payment Failed",
           paymentResult.error.message || "Payment was not completed.",
         );
       } else {
-        Alert.alert("Success", "Payment completed!");
+        toast.success("Payment Complete!", "Payment completed!");
         await getMyBookings();
         // Optionally refresh ride data or navigate
       }
     } catch (error: any) {
-      Alert.alert(
-        "Error",
+      toast.error(
+        "Payment Failed",
         error?.response?.data?.message || error.message || "Payment failed",
       );
     } finally {
@@ -163,7 +164,7 @@ export default function RideDetailsScreen() {
           }
         } catch (error) {
           console.error("Failed to load ride:", error);
-          Alert.alert("Error", "Failed to load ride details");
+          toast.error("Error", "Failed to load ride details");
         } finally {
           setLoading(false);
         }
@@ -225,12 +226,12 @@ export default function RideDetailsScreen() {
 
   const handleBooking = async () => {
     if (!seats || parseInt(seats) < 1) {
-      Alert.alert("Error", "Please enter a valid number of seats");
+      toast.warning("Invalid Seats", "Please enter a valid number of seats");
       return;
     }
 
     if (parseInt(seats) > (ride?.seats_left || 0)) {
-      Alert.alert("Error", "Not enough seats available");
+      toast.warning("Not Enough Seats", "Not enough seats available");
       return;
     }
 
@@ -254,17 +255,14 @@ export default function RideDetailsScreen() {
         // Refresh bookings
         await getMyBookings();
         
-        Alert.alert(
-          "🎉 Success!", 
-          `Booking confirmed!\n\nPaid with wallet balance.\nNew balance: €${(result.newBalance! / 100).toFixed(2)}\n\nNo Stripe fees applied! 💰`,
-          [{ text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=mybookings") }]
-        );
+        toast.success("🎉 Booking Confirmed!", `Paid with wallet balance.\nNew balance: €${(result.newBalance! / 100).toFixed(2)}\nNo Stripe fees applied! 💰`);
+        router.replace("/(tabs)/explore?tab=active");
       } else {
-        Alert.alert("Payment Failed", result.message || "Could not process wallet payment");
+        toast.error("Payment Failed", result.message || "Could not process wallet payment");
       }
     } catch (error: any) {
       console.log("Wallet payment error:", error);
-      Alert.alert("Error", error.message || "Wallet payment failed");
+      toast.error("Error", error.message || "Wallet payment failed");
     }
   };
 
@@ -293,7 +291,7 @@ export default function RideDetailsScreen() {
       console.log("Payment sheet init result:", initResult);
       
       if (initResult.error) {
-        Alert.alert("Error", initResult.error.message || "Failed to initialize payment");
+        toast.error("Error", initResult.error.message || "Failed to initialize payment");
         return;
       }
 
@@ -303,7 +301,7 @@ export default function RideDetailsScreen() {
       console.log("Payment result:", paymentResult);
       
       if (paymentResult.error) {
-        Alert.alert("Payment Cancelled", paymentResult.error.message || "Payment was not completed.");
+        toast.info("Payment Cancelled", paymentResult.error.message || "Payment was not completed.");
         return;
       }
       
@@ -321,14 +319,13 @@ export default function RideDetailsScreen() {
       // Refresh bookings
       await getMyBookings();
       
-      Alert.alert("Success", "Payment completed! Your booking is confirmed.", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=mybookings") }
-      ]);
+      toast.success("Payment Complete!", "Your booking is confirmed.");
+      router.replace("/(tabs)/explore?tab=active");
       
     } catch (error: any) {
       console.log("Payment error:", error);
       console.log("Error response:", error?.response?.data);
-      Alert.alert("Error", error?.response?.data?.message || error.message || "Payment failed");
+      toast.error("Payment Failed", error?.response?.data?.message || error.message || "Payment failed");
     }
   };
 
@@ -338,9 +335,9 @@ export default function RideDetailsScreen() {
       await acceptBooking(bookingId);
       await fetchRide(); // Refresh local ride data
       await getMyRides(); // Update list view
-      Alert.alert("Success", "Booking accepted");
+      toast.success("Booking Accepted", "Booking accepted");
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to accept booking");
+      toast.error("Error", err.message || "Failed to accept booking");
     } finally {
       setActionId(null);
     }
@@ -352,9 +349,9 @@ export default function RideDetailsScreen() {
       await rejectBooking(bookingId);
       await fetchRide(); // Refresh local ride data
       await getMyRides(); // Update list view
-      Alert.alert("Success", "Booking rejected");
+      toast.success("Booking Rejected", "Booking rejected");
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to reject booking");
+      toast.error("Error", err.message || "Failed to reject booking");
     } finally {
       setActionId(null);
     }
@@ -375,16 +372,11 @@ export default function RideDetailsScreen() {
               if (id) {
                 await cancelRide(id);
                 // Redirect to My Trips tab after cancellation
-                Alert.alert("Success", "Ride cancelled successfully", [
-                  {
-                    text: "OK",
-                    onPress: () =>
-                      router.replace("/(tabs)/explore?tab=myrides"),
-                  },
-                ]);
+                toast.success("Ride Cancelled", "Ride cancelled successfully");
+                router.replace("/(tabs)/explore?tab=myrides");
               }
             } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to cancel ride");
+              toast.error("Error", error.message || "Failed to cancel ride");
             } finally {
               setIsCancelling(false);
             }

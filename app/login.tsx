@@ -7,7 +7,6 @@ import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import axios from "axios";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -17,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { toast } from "../src/store/toastStore";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -63,10 +63,7 @@ export default function LoginScreen() {
       login(user.email, undefined); // Set user in store (or update store directly)
       router.replace("/(tabs)");
     } catch (error: any) {
-      Alert.alert(
-        "Google Login Failed",
-        error.response?.data?.message || error.message,
-      );
+      toast.error("Google Login Failed", error.response?.data?.message || error.message);
     } finally {
       setLoading(false);
     }
@@ -80,7 +77,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      toast.warning("Missing Fields", "Please fill in all required fields");
       return;
     }
 
@@ -89,7 +86,7 @@ export default function LoginScreen() {
       await login(email, password);
       router.replace("/(tabs)");
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message);
+      toast.error("Login Failed", error.message);
     } finally {
       setLoading(false);
     }
@@ -183,7 +180,10 @@ export default function LoginScreen() {
             </View>
 
             {/* Forgot Password */}
-            <TouchableOpacity style={styles.forgotButton}>
+            <TouchableOpacity
+              style={styles.forgotButton}
+              onPress={() => router.push("/forgot-password")}
+            >
               <Text style={styles.forgotText}>Forgot Password?</Text>
             </TouchableOpacity>
 

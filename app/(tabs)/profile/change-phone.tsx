@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../../../src/store/authStore";
 import { api } from "../../../src/lib/api";
+import { toast } from "../../../src/store/toastStore";
 import { auth, signInWithPhoneNumber, PhoneAuthProvider, signInWithCredential } from "../../../src/firebase";
 
 export default function ChangePhoneScreen() {
@@ -56,15 +56,12 @@ export default function ChangePhoneScreen() {
     const formattedPhone = formatPhoneNumber(newPhone);
 
     if (!validatePhone(formattedPhone)) {
-      Alert.alert(
-        "Invalid Phone Number",
-        "Please enter a valid phone number with country code (e.g., +33612345678)"
-      );
+      toast.warning("Invalid Phone Number", "Please enter a valid phone number with country code (e.g., +33612345678)");
       return;
     }
 
     if (formattedPhone === user?.phone) {
-      Alert.alert("Error", "New phone number must be different from your current phone");
+      toast.warning("Same Number", "New phone number must be different from your current phone");
       return;
     }
 
@@ -75,7 +72,7 @@ export default function ChangePhoneScreen() {
       setVerificationId(confirmation);
       setStep("otp");
       setResendSeconds(60);
-      Alert.alert("OTP Sent", "A verification code has been sent to your phone.");
+      toast.info("OTP Sent", "A verification code has been sent to your phone.");
     } catch (error: any) {
       console.error("Phone OTP send error:", error);
       let errorMessage = "Failed to send verification code";
@@ -88,20 +85,20 @@ export default function ChangePhoneScreen() {
         errorMessage = error.message;
       }
       
-      Alert.alert("Error", errorMessage);
+      toast.error("Error", errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const verifyAndChangePhone = async () => {
+  const verifyOtp = async () => {
     if (!otp.trim() || otp.length !== 6) {
-      Alert.alert("Error", "Please enter the 6-digit verification code");
+      toast.warning("Missing Code", "Please enter the 6-digit verification code");
       return;
     }
 
     if (!verificationId) {
-      Alert.alert("Error", "No verification in progress. Please request a new code.");
+      toast.error("Error", "No verification in progress. Please request a new code.");
       return;
     }
 
@@ -137,9 +134,8 @@ export default function ChangePhoneScreen() {
       });
 
       await refreshUser();
-      Alert.alert("Success", "Your phone number has been updated successfully!", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      toast.success("Phone Updated", "Your phone number has been updated successfully!");
+      router.back();
     } catch (error: any) {
       console.error("Phone change error:", error);
       let errorMessage = "Failed to change phone number";
@@ -152,7 +148,7 @@ export default function ChangePhoneScreen() {
         errorMessage = error.message;
       }
       
-      Alert.alert("Error", errorMessage);
+      toast.error("Error", errorMessage);
     } finally {
       setLoading(false);
     }
@@ -265,7 +261,7 @@ export default function ChangePhoneScreen() {
               {/* Change Phone Button */}
               <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
-                onPress={verifyAndChangePhone}
+                onPress={verifyOtp}
                 disabled={loading}
               >
                 {loading ? (

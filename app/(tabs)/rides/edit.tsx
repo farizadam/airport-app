@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Modal,
   FlatList,
@@ -22,6 +21,7 @@ import { useAirportStore } from "../../../src/store/airportStore";
 import MapLocationPicker from "../../../src/components/MapLocationPicker";
 import LeafletMap from "@/components/LeafletMap";
 import { Airport, Ride } from "../../../src/types";
+import { toast } from "../../../src/store/toastStore";
 
 export default function EditRideScreen() {
   const router = useRouter();
@@ -50,6 +50,7 @@ export default function EditRideScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [totalSeats, setTotalSeats] = useState(3);
+  const [luggageCapacity, setLuggageCapacity] = useState(2);
   const [pricePerSeat, setPricePerSeat] = useState("");
   const [driverComment, setDriverComment] = useState("");
   const [isInitializing, setIsInitializing] = useState(true);
@@ -68,7 +69,7 @@ export default function EditRideScreen() {
         setRide(data);
       } catch (error) {
         console.error("Failed to fetch ride:", error);
-        Alert.alert("Error", "Failed to load ride details");
+        toast.error("Error", "Failed to load ride details");
         router.back();
       }
     };
@@ -108,6 +109,7 @@ export default function EditRideScreen() {
         }
 
         setTotalSeats(ride.seats_total || ride.total_seats || 3);
+        setLuggageCapacity(ride.luggage_capacity ?? 2);
         setPricePerSeat(String(ride.price_per_seat || ""));
         setDriverComment(ride.driver_comment || ride.comment || "");
         
@@ -129,15 +131,15 @@ export default function EditRideScreen() {
 
   const handleSubmit = async () => {
     if (!airportId) {
-      Alert.alert("Error", "Please select an airport");
+      toast.warning("Missing Airport", "Please select an airport");
       return;
     }
     if (!location?.address) {
-      Alert.alert("Error", "Please select your pickup/dropoff location");
+      toast.warning("Missing Location", "Please select your pickup/dropoff location");
       return;
     }
     if (!pricePerSeat) {
-      Alert.alert("Error", "Please enter a price per seat");
+      toast.warning("Missing Price", "Please enter a price per seat");
       return;
     }
 
@@ -152,15 +154,15 @@ export default function EditRideScreen() {
         home_postcode: postcode,
         departure_datetime: departureDateTime.toISOString(),
         total_seats: totalSeats,
+        luggage_capacity: luggageCapacity,
         price_per_seat: parseFloat(pricePerSeat),
         driver_comment: driverComment.trim() || undefined,
       });
 
-      Alert.alert("Success", "Ride updated successfully", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=myrides") }
-      ]);
+      toast.success("Ride Updated", "Your ride has been updated successfully");
+      router.replace("/(tabs)/explore?tab=myrides");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to update ride");
+      toast.error("Error", error.message || "Failed to update ride");
     }
   };
 
@@ -286,6 +288,10 @@ export default function EditRideScreen() {
           transparent={true}
           onRequestClose={() => setShowAirportDropdown(false)}
         >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+          >
           <View style={styles.modalOverlay}>
             <View style={styles.airportModalContent}>
               <View style={styles.airportModalHeader}>
@@ -337,6 +343,7 @@ export default function EditRideScreen() {
               />
             </View>
           </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Airport Map Modal */}
@@ -457,6 +464,24 @@ export default function EditRideScreen() {
             onPress={() => setTotalSeats(Math.min(7, totalSeats + 1))}
           >
             <Ionicons name="add-circle-outline" size={28} color={totalSeats < 7 ? "#007AFF" : "#ccc"} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Luggage Capacity */}
+        <Text style={styles.label}>Luggage Capacity</Text>
+        <View style={styles.counterRow}>
+          <TouchableOpacity
+            style={styles.counterButton}
+            onPress={() => setLuggageCapacity(Math.max(0, luggageCapacity - 1))}
+          >
+            <Ionicons name="remove-circle-outline" size={28} color={luggageCapacity > 0 ? "#007AFF" : "#ccc"} />
+          </TouchableOpacity>
+          <Text style={styles.counterValue}>{luggageCapacity}</Text>
+          <TouchableOpacity
+            style={styles.counterButton}
+            onPress={() => setLuggageCapacity(Math.min(10, luggageCapacity + 1))}
+          >
+            <Ionicons name="add-circle-outline" size={28} color={luggageCapacity < 10 ? "#007AFF" : "#ccc"} />
           </TouchableOpacity>
         </View>
 

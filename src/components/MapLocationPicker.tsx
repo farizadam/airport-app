@@ -6,13 +6,13 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
-  Alert,
   TextInput,
   FlatList,
   Keyboard,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { toast } from "../store/toastStore";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import LeafletMap, { LeafletMapRef } from "./LeafletMap";
@@ -115,7 +115,7 @@ export default function MapLocationPicker({
 
   const handleSearch = async () => {
     if (searchQuery.length < 2) {
-      Alert.alert("Search", "Please enter at least 2 characters");
+      toast.warning("Search", "Please enter at least 2 characters");
       return;
     }
     Keyboard.dismiss();
@@ -151,7 +151,7 @@ export default function MapLocationPicker({
       }
     } catch (error) {
       console.error("Nominatim search error:", error);
-      Alert.alert("Search Error", "Could not fetch search results from OpenStreetMap.");
+      toast.error("Search Error", "Could not fetch search results from OpenStreetMap.");
     } finally {
       setIsSearching(false);
     }
@@ -206,7 +206,7 @@ export default function MapLocationPicker({
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
+        toast.warning(
           "Permission Denied",
           "Please enable location permissions to use this feature."
         );
@@ -269,7 +269,7 @@ export default function MapLocationPicker({
                 longitude: defaultLon,
                 zoom: 6
             });
-            Alert.alert("Location Unavailable", "GPS signal not found. Please search for your location or tap on the map.");
+            toast.info("Location Unavailable", "GPS signal not found. Please search for your location or tap on the map.");
           }
         }
       } else {
@@ -282,7 +282,7 @@ export default function MapLocationPicker({
              longitude: defaultLon,
              zoom: 6
          });
-         Alert.alert("Location Unavailable", "GPS signal not found. Please select location manually.");
+         toast.info("Location Unavailable", "GPS signal not found. Please select location manually.");
       }
 
       setIsGettingLocation(false);
@@ -298,7 +298,7 @@ export default function MapLocationPicker({
              longitude: defaultLon,
              zoom: 6
          });
-         Alert.alert("Location Unavailable", "GPS signal not found. Please select location manually.");
+         toast.info("Location Unavailable", "GPS signal not found. Please select location manually.");
          setIsGettingLocation(false);
          setIsLoading(false);
     }
@@ -374,7 +374,7 @@ export default function MapLocationPicker({
       onSelectLocation(selectedLocation);
       onClose();
     } else {
-        Alert.alert("No Location", "Please select a location on the map.");
+        toast.warning("No Location", "Please select a location on the map.");
     }
   };
 

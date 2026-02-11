@@ -14,7 +14,6 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -28,6 +27,7 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { toast } from "../../../src/store/toastStore";
 
 type SearchStep = "airport" | "location" | "datetime" | "results";
 
@@ -40,6 +40,7 @@ interface SearchResult {
   dropoffLocation: string;
   departureTime: string;
   availableSeats?: number;
+  luggageCapacity?: number;
   passengers?: number;
   pricePerSeat?: number;
   // Driver/passenger details for profile avatar
@@ -109,6 +110,14 @@ export default function SearchScreen() {
     (params.direction || params.prefillDirection || "to_airport") as "to_airport" | "from_airport"
   );
   const [resultFilter, setResultFilter] = useState<"all" | "rides" | "requests">("all");
+
+  // Filter state
+  const [filterMinSeats, setFilterMinSeats] = useState("");
+  const [filterMinLuggage, setFilterMinLuggage] = useState("");
+  const [filterMaxPrice, setFilterMaxPrice] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const hasActiveFilters = filterMinSeats !== "" || filterMinLuggage !== "" || filterMaxPrice !== "";
+  const clearFilters = () => { setFilterMinSeats(""); setFilterMinLuggage(""); setFilterMaxPrice(""); };
   
   // Airport Map State
   const [showAirportMap, setShowAirportMap] = useState(false);
@@ -160,7 +169,7 @@ export default function SearchScreen() {
       fetchAirports({
         latitude: region.latitude,
         longitude: region.longitude,
-        radius: 100000, // 100km radius search
+        radius: 200000, // 200km radius search
       });
     }, 500);
   };
@@ -353,7 +362,7 @@ export default function SearchScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Permission to access location was denied');
+        toast.warning("Permission Denied", "Permission to access location was denied");
         setGettingLocation(false);
         return;
       }
@@ -404,14 +413,14 @@ export default function SearchScreen() {
             }
           } else {
             console.log("GPS returned invalid coordinates (0, 0)");
-            Alert.alert('Location Unavailable', 'GPS signal not found. Please use the map to select your location or search for an address.');
+            toast.info("Location Unavailable", "GPS signal not found. Please use the map to select your location or search for an address.");
           }
       } else {
-         Alert.alert('Error', 'Could not retrieve location. Please search manually.');
+         toast.error("Error", "Could not retrieve location. Please search manually.");
       }
 
     } catch (error) {
-      Alert.alert('Error', 'Could not fetch location');
+      toast.error("Error", "Could not fetch location");
       console.error(error);
     } finally {
       setGettingLocation(false);
@@ -561,6 +570,7 @@ export default function SearchScreen() {
       const rideParams = new URLSearchParams();
       rideParams.append("airport_id", airportId);
       rideParams.append("direction", searchDirection);
+      rideParams.append("date", selectedDate.toISOString().split("T")[0]);
       if (locationCoords) {
         rideParams.append("latitude", locationCoords.lat.toString());
         rideParams.append("longitude", locationCoords.lng.toString());
@@ -570,6 +580,7 @@ export default function SearchScreen() {
       const requestParams = new URLSearchParams();
       requestParams.append("airport_id", airportId);
       requestParams.append("direction", searchDirection);
+      requestParams.append("date", selectedDate.toISOString().split("T")[0]);
       
       console.log("[Search] Rides API URL:", `/rides/search?${rideParams.toString()}`);
       console.log("[Search] Requests API URL:", `/ride-requests/available?${requestParams.toString()}`);
@@ -589,15 +600,20 @@ export default function SearchScreen() {
         console.error("[Search] Rides API error:", rideError.response?.data || rideError.message);
       }
       
-      // Fetch requests
+      // Fetch requests (requires auth - skip silently if not authenticated)
       try {
-        console.log("[Search] Fetching requests...");
-        const requestsResponse = await api.get(`/ride-requests/available?${requestParams}`);
-        console.log("[Search] Requests response:", JSON.stringify(requestsResponse.data, null, 2));
-        requestsData = requestsResponse.data.requests || requestsResponse.data.data || [];
-        console.log("[Search] Requests found:", requestsData.length);
+        const SecureStore = require('expo-secure-store');
+        const token = await SecureStore.getItemAsync('accessToken');
+        if (token) {
+          console.log("[Search] Fetching requests...");
+          const requestsResponse = await api.get(`/ride-requests/available?${requestParams}`);
+          requestsData = requestsResponse.data.requests || requestsResponse.data.data || [];
+          console.log("[Search] Requests found:", requestsData.length);
+        } else {
+          console.log("[Search] Skipping requests (not authenticated)");
+        }
       } catch (requestError: any) {
-        console.error("[Search] Requests API error:", requestError.response?.data || requestError.message);
+        console.log("[Search] Requests unavailable:", requestError.response?.status || requestError.message);
       }
       
       // Log the direction of each ride received
@@ -675,6 +691,7 @@ export default function SearchScreen() {
               dropoffLocation: isToAirportSearch ? airportLocation : (userSearchLocation || homeLocation),
               departureTime: ride.departure_datetime || ride.datetime_start,
               availableSeats: ride.available_seats || ride.seats_left || ride.total_seats,
+              luggageCapacity: ride.luggage_capacity || ride.luggage_left || 0,
               pricePerSeat: ride.price_per_seat,
               // Multi-stop route info - only show if distance > 20km
               driverStartLocation: driverStart,
@@ -770,7 +787,7 @@ export default function SearchScreen() {
       setSearchResults(results);
     } catch (error: any) {
       console.error("Search error:", error.response?.data || error.message);
-      Alert.alert("Error", "Failed to search. Please try again.");
+      toast.error("Error", "Failed to search. Please try again.");
     }
     
     setIsSearching(false);
@@ -805,11 +822,14 @@ export default function SearchScreen() {
 
   const renderAirportStep = () => (
     <FlatList
-      data={airportsLoading ? [] : filteredAirports.slice(0, 20)}
+      data={airportsLoading ? [] : filteredAirports}
       keyExtractor={(item) => item._id || item.id || String(Math.random())}
       style={styles.stepContent}
       contentContainerStyle={{ paddingBottom: 40 }}
       keyboardShouldPersistTaps="handled"
+      initialNumToRender={20}
+      maxToRenderPerBatch={30}
+      windowSize={10}
       ListHeaderComponent={
         <>
           <Text style={styles.stepTitle}>
@@ -1242,19 +1262,107 @@ export default function SearchScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Filter Bar */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setShowFilters(!showFilters)}
+          style={{ backgroundColor: '#F8FAFC', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: hasActiveFilters ? themeColor : '#E2E8F0' }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="options-outline" size={16} color={hasActiveFilters ? themeColor : '#64748B'} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: hasActiveFilters ? themeColor : '#334155' }}>
+                {hasActiveFilters ? 'Filters active' : 'Filter results'}
+              </Text>
+              {hasActiveFilters && (
+                <View style={{ backgroundColor: themeColor, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 4 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#fff' }}>
+                    {[filterMinSeats, filterMinLuggage, filterMaxPrice].filter(Boolean).length}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {hasActiveFilters && (
+                <TouchableOpacity onPress={(e) => { e.stopPropagation(); clearFilters(); }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: themeColor }}>Clear</Text>
+                </TouchableOpacity>
+              )}
+              <Ionicons name={showFilters ? 'chevron-up' : 'chevron-down'} size={16} color='#94A3B8' />
+            </View>
+          </View>
+        </TouchableOpacity>
+        {showFilters && (
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600', marginBottom: 3 }}>Min Seats</Text>
+              <TextInput
+                style={{ backgroundColor: '#fff', borderWidth: 1.5, borderColor: filterMinSeats ? themeColor : '#E2E8F0', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 14, color: '#1E293B', textAlign: 'center', fontWeight: '600' }}
+                value={filterMinSeats}
+                onChangeText={setFilterMinSeats}
+                keyboardType="number-pad"
+                placeholder="Any"
+                placeholderTextColor="#9CA3AF"
+                maxLength={2}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600', marginBottom: 3 }}>Min Luggage</Text>
+              <TextInput
+                style={{ backgroundColor: '#fff', borderWidth: 1.5, borderColor: filterMinLuggage ? themeColor : '#E2E8F0', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 14, color: '#1E293B', textAlign: 'center', fontWeight: '600' }}
+                value={filterMinLuggage}
+                onChangeText={setFilterMinLuggage}
+                keyboardType="number-pad"
+                placeholder="Any"
+                placeholderTextColor="#9CA3AF"
+                maxLength={2}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600', marginBottom: 3 }}>Max Price €</Text>
+              <TextInput
+                style={{ backgroundColor: '#fff', borderWidth: 1.5, borderColor: filterMaxPrice ? themeColor : '#E2E8F0', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 14, color: '#1E293B', textAlign: 'center', fontWeight: '600' }}
+                value={filterMaxPrice}
+                onChangeText={setFilterMaxPrice}
+                keyboardType="number-pad"
+                placeholder="Any"
+                placeholderTextColor="#9CA3AF"
+                maxLength={4}
+              />
+            </View>
+          </View>
+        )}
+
         {/* Results Count */}
         <Text style={styles.resultsCount}>
-          {(resultFilter === "all" 
-            ? searchResults 
-            : searchResults.filter(r => resultFilter === "rides" ? r.type === "ride" : r.type === "request")
-          ).length} {searchResults.length === 1 ? "result" : "results"} found
+          {(() => {
+            let filtered = resultFilter === "all" ? searchResults : searchResults.filter(r => resultFilter === "rides" ? r.type === "ride" : r.type === "request");
+            if (filterMinSeats) filtered = filtered.filter(r => (r.availableSeats || 0) >= parseInt(filterMinSeats));
+            if (filterMinLuggage) filtered = filtered.filter(r => (r.luggageCapacity || 0) >= parseInt(filterMinLuggage));
+            if (filterMaxPrice) filtered = filtered.filter(r => (r.pricePerSeat || 0) <= parseFloat(filterMaxPrice));
+            return filtered.length;
+          })()} {searchResults.length === 1 ? "result" : "results"} found{hasActiveFilters ? ` (of ${searchResults.length})` : ''}
         </Text>
 
         {/* Results List */}
         {(() => {
-          const filteredResults = resultFilter === "all" 
+          let filteredResults = resultFilter === "all" 
             ? searchResults 
             : searchResults.filter(r => resultFilter === "rides" ? r.type === "ride" : r.type === "request");
+          
+          // Apply filters
+          if (filterMinSeats) {
+            const minSeats = parseInt(filterMinSeats);
+            if (!isNaN(minSeats)) filteredResults = filteredResults.filter(r => (r.availableSeats || 0) >= minSeats);
+          }
+          if (filterMinLuggage) {
+            const minLuggage = parseInt(filterMinLuggage);
+            if (!isNaN(minLuggage)) filteredResults = filteredResults.filter(r => (r.luggageCapacity || 0) >= minLuggage);
+          }
+          if (filterMaxPrice) {
+            const maxPrice = parseFloat(filterMaxPrice);
+            if (!isNaN(maxPrice)) filteredResults = filteredResults.filter(r => (r.pricePerSeat || 0) <= maxPrice);
+          }
           
           if (filteredResults.length === 0) {
             return (
@@ -1599,7 +1707,7 @@ export default function SearchScreen() {
                         });
                       } else {
                         router.push({
-                          pathname: '/(tabs)/requests/[id]',
+                          pathname: '/request-details/[id]',
                           params: { id: result.id }
                         });
                       }
@@ -1639,7 +1747,7 @@ export default function SearchScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <LinearGradient
         colors={themeGradient}
@@ -1697,7 +1805,7 @@ export default function SearchScreen() {
         <ScrollView 
           style={styles.content}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: 8 }}
         >
           {step === "location" && renderLocationStep()}
           {step === "datetime" && renderDateTimeStep()}
@@ -1742,14 +1850,13 @@ export default function SearchScreen() {
           <LeafletMap
             mode="view"
             initialRegion={INITIAL_AIRPORT_REGION} // Default to Europe center
-            markers={airports.map(a => ({
+            markers={airports.filter(a => a.latitude != null && a.longitude != null).map(a => ({
               id: a._id || a.id,
-              latitude: a.latitude,
-              longitude: a.longitude,
+              latitude: a.latitude!,
+              longitude: a.longitude!,
               title: `${a.iata_code} - ${a.name}`,
-              type: 'airport'
+              type: 'airport' as const
             }))}
-            onRegionChange={handleAirportMapRegionChange}
             onMarkerClick={handleAirportMarkerClick}
           />
           {airportsLoading && (
@@ -2119,12 +2226,12 @@ const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 4,
   },
   summaryText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#1E293B",
-    marginLeft: 10,
+    marginLeft: 8,
     flex: 1,
   },
   dateTimeSection: {
@@ -2233,43 +2340,43 @@ const styles = StyleSheet.create({
   },
   resultsSummary: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
   filterTabs: {
     flexDirection: "row",
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: 10,
+    gap: 6,
   },
   filterTab: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 8,
     backgroundColor: "#fff",
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    gap: 4,
+    gap: 3,
   },
   filterTabActive: {
     backgroundColor: "#F8FAFC",
   },
   filterTabText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: "#64748B",
   },
   resultsCount: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: "#64748B",
-    marginBottom: 16,
+    marginBottom: 10,
   },
   noResults: {
     alignItems: "center",

@@ -7,7 +7,6 @@ import * as ImagePicker from "expo-image-picker";
 import { auth, signInWithPhoneNumber, PhoneAuthProvider, signInWithCredential, getIdToken } from "@/firebase";
 import api from "@/lib/api";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -18,6 +17,7 @@ import {
   View,
   Image,
 } from "react-native";
+import { toast } from "../src/store/toastStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function RegisterScreen() {
@@ -60,10 +60,7 @@ export default function RegisterScreen() {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission required",
-          "Permission to access photos is required.",
-        );
+        toast.warning("Permission Required", "Permission to access photos is required.");
         return;
       }
 
@@ -79,7 +76,7 @@ export default function RegisterScreen() {
 
       if (result.canceled) {
         // user cancelled the picker/crop — keep previous image
-        Alert.alert("Selection cancelled", "Previous image kept.");
+        toast.info("Selection Cancelled", "Previous image kept.");
         return;
       }
 
@@ -97,7 +94,7 @@ export default function RegisterScreen() {
       }
     } catch (err) {
       console.error("Image pick error", err);
-      Alert.alert("Error", "Could not pick image");
+      toast.error("Error", "Could not pick image");
     }
   };
 
@@ -109,23 +106,23 @@ export default function RegisterScreen() {
       !formData.last_name ||
       !formData.phone
     ) {
-      Alert.alert("Error", "Please fill in all required fields");
+      toast.warning("Missing Fields", "Please fill in all required fields");
       return false;
     }
 
     if (formData.password.length < 8) {
-      Alert.alert("Error", "Password must be at least 8 characters");
+      toast.warning("Weak Password", "Password must be at least 8 characters");
       return false;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      toast.warning("Password Mismatch", "Passwords do not match");
       return false;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      Alert.alert("Error", "Please enter a valid email address");
+      toast.warning("Invalid Email", "Please enter a valid email address");
       return false;
     }
 
@@ -148,7 +145,7 @@ export default function RegisterScreen() {
       await register(registerData as any);
       router.replace("/(tabs)");
     } catch (error: any) {
-      Alert.alert("Registration Failed", error.message || String(error));
+      toast.error("Registration Failed", error.message || String(error));
     } finally {
       setLoading(false);
     }
@@ -156,7 +153,7 @@ export default function RegisterScreen() {
 
   const sendPhoneOtp = async () => {
     if (!formData.phone) {
-      Alert.alert("Error", "Enter phone number first");
+      toast.warning("Missing Phone", "Enter phone number first");
       return;
     }
     try {
@@ -164,10 +161,7 @@ export default function RegisterScreen() {
       // Validate phone number is in E.164 format (required by Firebase)
       const isE164 = /^\+[1-9]\d{1,14}$/.test(formData.phone);
       if (!isE164) {
-        Alert.alert(
-          "Invalid phone number",
-          "Phone number must be in E.164 format. Example: +12025550123",
-        );
+        toast.warning("Invalid Phone Number", "Phone number must be in E.164 format. Example: +12025550123");
         return;
       }
 
@@ -176,17 +170,14 @@ export default function RegisterScreen() {
         const confirmation = await signInWithPhoneNumber(auth, formData.phone);
         setVerificationId(confirmation);
         setPhoneOtpSent(true);
-        Alert.alert("OTP Sent", "A verification code was sent to your phone.");
+        toast.info("OTP Sent", "A verification code was sent to your phone.");
       } catch (phoneAuthErr: any) {
         console.error("Phone auth error", phoneAuthErr);
-        Alert.alert(
-          "Error",
-          phoneAuthErr.message || "Phone auth is not available in this build.",
-        );
+        toast.error("Error", phoneAuthErr.message || "Phone auth is not available in this build.");
       }
     } catch (err: any) {
       console.error("Phone OTP send error", err);
-      Alert.alert("Error", err.message || "Failed to send OTP");
+      toast.error("Error", err.message || "Failed to send OTP");
     } finally {
       setLoading(false);
     }
@@ -194,7 +185,7 @@ export default function RegisterScreen() {
 
   const verifyPhoneOtp = async () => {
     if (!verificationId) {
-      Alert.alert("Error", "No verification ID. Request code first.");
+      toast.error("Error", "No verification ID. Request code first.");
       return;
     }
     try {
@@ -210,7 +201,7 @@ export default function RegisterScreen() {
         } catch (tokenErr) {
           console.warn("Failed to get firebase token", tokenErr);
         }
-        Alert.alert("Success", "Phone verified");
+        toast.success("Phone Verified", "Phone verified successfully");
         setStep((s) => Math.min(4, s + 1));
         return;
       }
@@ -232,7 +223,7 @@ export default function RegisterScreen() {
           } catch (tokenErr) {
             console.warn("Failed to get firebase token", tokenErr);
           }
-          Alert.alert("Success", "Phone verified");
+          toast.success("Phone Verified", "Phone verified successfully");
           setStep((s) => Math.min(4, s + 1));
           return;
         } catch (innerErr) {
@@ -241,13 +232,10 @@ export default function RegisterScreen() {
         }
       }
 
-      Alert.alert(
-        "Error",
-        "No native confirmation available. Ensure you're running a development build with native Firebase installed.",
-      );
+      toast.error("Error", "No native confirmation available. Ensure you're running a development build with native Firebase installed.");
     } catch (err: any) {
       console.error("Phone OTP verify error", err);
-      Alert.alert("Error", err.message || "Incorrect OTP");
+      toast.error("Error", err.message || "Incorrect OTP");
     } finally {
       setLoading(false);
     }
@@ -255,7 +243,7 @@ export default function RegisterScreen() {
 
   const sendEmailOtp = () => {
     if (!formData.email) {
-      Alert.alert("Error", "Enter email first");
+      toast.warning("Missing Email", "Enter email first");
       return;
     }
 
@@ -271,10 +259,7 @@ export default function RegisterScreen() {
           try {
             emailOtpInputRef.current?.focus();
           } catch (_) {}
-          Alert.alert(
-            "OTP Sent",
-            "A verification code was sent to your email.",
-          );
+          toast.info("OTP Sent", "A verification code was sent to your email.");
         } else {
           throw new Error(resp.data?.message || "Failed to send OTP");
         }
@@ -284,9 +269,9 @@ export default function RegisterScreen() {
         const message =
           err?.response?.data?.message || err.message || "Failed to send OTP";
         if (status === 429) {
-          Alert.alert("Too Many Requests", message);
+          toast.warning("Too Many Requests", message);
         } else {
-          Alert.alert("Error", message);
+          toast.error("Error", message);
         }
       } finally {
         setLoading(false);
@@ -303,7 +288,7 @@ export default function RegisterScreen() {
           code: enteredEmailOtp,
         });
         if (resp.data && resp.data.success) {
-          Alert.alert("Success", "Email verified");
+          toast.success("Email Verified", "Email verified successfully");
           setStep((s) => Math.min(4, s + 1));
         } else {
           throw new Error(resp.data?.message || "Incorrect OTP");
@@ -315,11 +300,11 @@ export default function RegisterScreen() {
           err?.response?.data?.message || err.message || "Incorrect OTP";
         if (status === 429) {
           // Too many attempts — force user to request a new code
-          Alert.alert("Too Many Attempts", message);
+          toast.warning("Too Many Attempts", message);
           setEmailOtpSent(false);
           setEnteredEmailOtp("");
         } else {
-          Alert.alert("Error", message);
+          toast.error("Error", message);
         }
       } finally {
         setLoading(false);

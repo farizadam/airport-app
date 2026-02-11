@@ -11,6 +11,7 @@ interface BookingState {
   createBooking: (
     rideId: string, 
     seats: number,
+    luggage_count?: number,
     pickup_location?: { address?: string; latitude?: number; longitude?: number },
     dropoff_location?: { address?: string; latitude?: number; longitude?: number }
   ) => Promise<Booking>;
@@ -35,9 +36,8 @@ export const useBookingStore = create<BookingState>((set) => ({
       );
       set({ myBookings: response.data.data });
     } catch (error: any) {
-      throw new Error(
-        error.response?.data?.message || "Failed to get bookings"
-      );
+      console.error("❌ Failed to fetch bookings:", error.response?.data || error.message);
+      // Don't throw - just keep existing data so UI still works
     } finally {
       set({ isLoading: false });
     }
@@ -65,12 +65,13 @@ export const useBookingStore = create<BookingState>((set) => ({
     }
   },
 
-  createBooking: async (rideId, seats, pickup_location, dropoff_location) => {
+  createBooking: async (rideId, seats, luggage_count, pickup_location, dropoff_location) => {
     try {
       const response = await api.post<{ data: Booking }>(
         `/rides/${rideId}/bookings`,
         { 
           seats,
+          luggage_count: luggage_count || 0,
           pickup_location,
           dropoff_location
         }

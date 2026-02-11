@@ -19,6 +19,7 @@ import {
   Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { toast } from "../../src/store/toastStore";
 
 type TabType = "active" | "myrides" | "myrequests" | "history";
 
@@ -130,6 +131,7 @@ export default function MyTripsScreen() {
         seats: b.seats_booked || b.seats,
         price: b.ride?.price_per_seat,
         direction: b.ride?.direction,
+        luggage_count: b.luggage_count,
         driver: {
           id: b.driver_id || b.ride?.driver?.id || b.ride?.driver?._id,
           _id: b.driver_id || b.ride?.driver?._id || b.ride?.driver?.id,
@@ -170,6 +172,7 @@ export default function MyTripsScreen() {
         seats: r.seats_needed,
         price: userOffer?.price_per_seat,
         direction: r.direction,
+        luggage_count: r.luggage_count,
         passenger: {
           id: r.passenger?.id || r.passenger?._id,
           _id: r.passenger?._id || r.passenger?.id,
@@ -186,7 +189,8 @@ export default function MyTripsScreen() {
   const ridesWithAcceptedBookings: TripItem[] = (rides || [])
     .filter((ride: any) => {
       const isOwner = ride.driver?._id === user?._id || ride.driver === user?._id || ride.driver_id === user?._id;
-      const hasAccepted = ride.bookings?.some((b: any) => b.status === "accepted");
+      const hasAccepted = ride.bookings?.some((b: any) => b.status === "accepted") ||
+                          ride.accepted_count > 0 || ride.accepted_bookings_count > 0;
       return isOwner && hasAccepted && 
              ride.status !== "cancelled" && ride.status !== "completed" &&
              isFuture(ride.departure_datetime || ride.datetime_start);
@@ -205,6 +209,8 @@ export default function MyTripsScreen() {
         seats: r.available_seats,
         price: r.price_per_seat,
         direction: r.direction,
+        luggage_capacity: r.luggage_capacity,
+        luggage_left: r.luggage_left,
         acceptedCount,
       };
     });
@@ -221,7 +227,7 @@ export default function MyTripsScreen() {
   const ridesWithPendingBookings = (rides || []).filter((ride: any) => {
     const isOwner = ride.driver?._id === user?._id || ride.driver === user?._id || ride.driver_id === user?._id;
     const hasPending = ride.bookings?.some((b: any) => b.status === "pending") || 
-                       ride.pending_bookings_count > 0;
+                       ride.pending_count > 0 || ride.pending_bookings_count > 0;
     return isOwner && hasPending && 
            ride.status !== "cancelled" && ride.status !== "completed" &&
            isFuture(ride.departure_datetime || ride.datetime_start);
@@ -268,6 +274,8 @@ export default function MyTripsScreen() {
         seats: r.available_seats,
         price: r.price_per_seat,
         direction: r.direction,
+        luggage_capacity: r.luggage_capacity,
+        luggage_left: r.luggage_left,
       };
     }),
     // Requests needing action (user is passenger - NEEDS TO ACT)
@@ -286,6 +294,7 @@ export default function MyTripsScreen() {
         departureTime: r.preferred_datetime,
         seats: r.seats_needed,
         direction: r.direction,
+        luggage_count: r.luggage_count,
       };
     }),
     // Pending offers (user is driver, WAITING for passenger)
@@ -307,6 +316,7 @@ export default function MyTripsScreen() {
         seats: r.seats_needed,
         price: userOffer?.price_per_seat,
         direction: r.direction,
+        luggage_count: r.luggage_count,
         passenger: {
           id: r.passenger?.id || r.passenger?._id,
           _id: r.passenger?._id || r.passenger?.id,
@@ -333,6 +343,7 @@ export default function MyTripsScreen() {
         seats: b.seats_booked || b.seats,
         price: b.ride?.price_per_seat,
         direction: b.ride?.direction,
+        luggage_count: b.luggage_count,
         driver: {
           id: b.driver_id || b.ride?.driver?.id || b.ride?.driver?._id,
           _id: b.driver_id || b.ride?.driver?._id || b.ride?.driver?.id,
@@ -352,7 +363,9 @@ export default function MyTripsScreen() {
   // Rides with no bookings at all
   const ridesNoInteraction = (rides || []).filter((ride: any) => {
     const isOwner = ride.driver?._id === user?._id || ride.driver === user?._id || ride.driver_id === user?._id;
-    const hasNoBookings = !ride.bookings || ride.bookings.length === 0;
+    const hasNoBookings = (!ride.bookings || ride.bookings.length === 0) &&
+                          !ride.pending_count && !ride.accepted_count &&
+                          !ride.pending_bookings_count && !ride.accepted_bookings_count;
     const noPending = !ride.pending_bookings_count || ride.pending_bookings_count === 0;
     return isOwner && hasNoBookings && noPending && 
            ride.status !== "cancelled" && ride.status !== "completed" &&
@@ -382,6 +395,8 @@ export default function MyTripsScreen() {
         seats: r.available_seats,
         price: r.price_per_seat,
         direction: r.direction,
+        luggage_capacity: r.luggage_capacity,
+        luggage_left: r.luggage_left,
       };
     }),
     ...requestsNoInteraction.map((r: any) => {
@@ -396,6 +411,7 @@ export default function MyTripsScreen() {
         departureTime: r.preferred_datetime,
         seats: r.seats_needed,
         direction: r.direction,
+        luggage_count: r.luggage_count,
       };
     }),
   ].sort((a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime());
@@ -438,6 +454,8 @@ export default function MyTripsScreen() {
           seats: r.available_seats,
           price: r.price_per_seat,
           direction: r.direction,
+        luggage_capacity: r.luggage_capacity,
+        luggage_left: r.luggage_left,
         };
       }),
     ...(requests || [])
@@ -455,6 +473,7 @@ export default function MyTripsScreen() {
           departureTime: r.preferred_datetime,
           seats: r.seats_needed,
           direction: r.direction,
+          luggage_count: r.luggage_count,
         };
       }),
     ...(bookings || [])
@@ -472,6 +491,7 @@ export default function MyTripsScreen() {
           departureTime: b.ride?.departure_datetime || b.ride?.datetime_start,
           seats: b.seats_booked,
           direction: b.ride?.direction,
+          luggage_count: b.luggage_count,
           driver: {
             id: b.driver_id || b.ride?.driver?.id || b.ride?.driver?._id,
             _id: b.driver_id || b.ride?.driver?._id || b.ride?.driver?.id,
@@ -504,6 +524,7 @@ export default function MyTripsScreen() {
           seats: r.seats_needed,
           price: userOffer?.price_per_seat,
           direction: r.direction,
+          luggage_count: r.luggage_count,
           passenger: {
             id: r.passenger?.id || r.passenger?._id,
             _id: r.passenger?._id || r.passenger?.id,
@@ -542,7 +563,7 @@ export default function MyTripsScreen() {
               
               loadData(); // Refresh data
             } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to cancel");
+              toast.error("Error", error.message || "Failed to cancel");
             }
           }
         }
@@ -596,15 +617,17 @@ export default function MyTripsScreen() {
         const ridesWithBookings: TripItem[] = (rides || [])
           .filter((ride: any) => {
             const isOwner = ride.driver?._id === user?._id || ride.driver === user?._id || ride.driver_id === user?._id;
-            const hasBookings = ride.bookings && ride.bookings.length > 0;
+            const hasBookings = (ride.bookings && ride.bookings.length > 0) ||
+                                ride.pending_count > 0 || ride.accepted_count > 0 ||
+                                ride.pending_bookings_count > 0 || ride.accepted_bookings_count > 0;
             return isOwner && hasBookings && 
                    ride.status !== "cancelled" && ride.status !== "completed" &&
                    isFuture(ride.departure_datetime || ride.datetime_start);
           })
           .map((r: any) => {
             const locs = getLocations(r);
-            const pendingCount = r.bookings?.filter((b: any) => b.status === "pending").length || 0;
-            const acceptedCount = r.bookings?.filter((b: any) => b.status === "accepted").length || 0;
+            const pendingCount = r.bookings?.filter((b: any) => b.status === "pending").length || r.pending_count || r.pending_bookings_count || 0;
+            const acceptedCount = r.bookings?.filter((b: any) => b.status === "accepted").length || r.accepted_count || r.accepted_bookings_count || 0;
             return {
               id: r._id || r.id,
               type: "ride" as const,
@@ -619,6 +642,8 @@ export default function MyTripsScreen() {
               seats: r.available_seats,
               price: r.price_per_seat,
               direction: r.direction,
+              luggage_capacity: r.luggage_capacity,
+              luggage_left: r.luggage_left,
             };
           });
         
@@ -648,6 +673,7 @@ export default function MyTripsScreen() {
               departureTime: r.preferred_datetime,
               seats: r.seats_needed,
               direction: r.direction,
+              luggage_count: r.luggage_count,
             };
           });
         
@@ -673,6 +699,7 @@ export default function MyTripsScreen() {
               seats: r.seats_needed,
               price: userOffer?.price_per_seat,
               direction: r.direction,
+              luggage_count: r.luggage_count,
               passenger: {
                 first_name: r.passenger?.first_name,
                 last_name: r.passenger?.last_name,
@@ -715,6 +742,8 @@ export default function MyTripsScreen() {
               seats: r.available_seats,
               price: r.price_per_seat,
               direction: r.direction,
+              luggage_capacity: r.luggage_capacity,
+              luggage_left: r.luggage_left,
               pendingCount,
               acceptedCount,
             };
@@ -738,6 +767,7 @@ export default function MyTripsScreen() {
               departureTime: r.preferred_datetime,
               seats: r.seats_needed,
               direction: r.direction,
+              luggage_count: r.luggage_count,
               pendingCount: pendingOffers,
             };
           });
@@ -796,7 +826,9 @@ export default function MyTripsScreen() {
   // Rides with any bookings count
   const ridesWithBookingsCount = (rides || []).filter((ride: any) => {
     const isOwner = ride.driver?._id === user?._id || ride.driver === user?._id || ride.driver_id === user?._id;
-    const hasBookings = ride.bookings && ride.bookings.length > 0;
+    const hasBookings = (ride.bookings && ride.bookings.length > 0) ||
+                        ride.pending_count > 0 || ride.accepted_count > 0 ||
+                        ride.pending_bookings_count > 0 || ride.accepted_bookings_count > 0;
     return isOwner && hasBookings && 
            ride.status !== "cancelled" && ride.status !== "completed" &&
            isFuture(ride.departure_datetime || ride.datetime_start);
@@ -925,24 +957,6 @@ export default function MyTripsScreen() {
       >
         {renderContent()}
       </ScrollView>
-
-      {/* FAB for quick create */}
-      {isAuthenticated && (
-        <View style={[styles.fabContainer, { bottom: insets.bottom + 90 }]}>
-          <TouchableOpacity
-            style={[styles.fab, styles.fabSecondary]}
-            onPress={() => router.push("/(tabs)/requests/create")}
-          >
-            <Ionicons name="hand-right" size={20} color="#8B5CF6" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.fab, styles.fabPrimary]}
-            onPress={() => router.push("/(tabs)/rides/create")}
-          >
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
   );
 }

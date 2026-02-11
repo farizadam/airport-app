@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import React, { useEffect } from "react";
-import { View, StyleSheet, Animated } from "react-native";
+import { View, StyleSheet, Animated, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -54,7 +54,7 @@ const TabLayout = observer(() => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -177,22 +177,45 @@ const TabLayout = observer(() => {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              iconName="person-outline"
-              iconNameFocused="person"
-              color={color}
-              focused={focused}
-            />
+            user?.avatar_url ? (
+              <View style={styles.iconContainer}>
+                {focused && (
+                  <View style={styles.glowContainer}>
+                    <LinearGradient
+                      colors={[
+                        "rgba(59, 130, 246, 0.6)",
+                        "rgba(6, 182, 212, 0.3)",
+                        "transparent",
+                      ]}
+                      style={styles.iconGlow}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                    />
+                  </View>
+                )}
+                <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
+                  <Image
+                    source={{ uri: user.avatar_url }}
+                    style={[
+                      styles.profileTabAvatar,
+                      focused && styles.profileTabAvatarActive,
+                    ]}
+                  />
+                </View>
+              </View>
+            ) : (
+              <TabIcon
+                iconName="person-outline"
+                iconNameFocused="person"
+                color={color}
+                focused={focused}
+              />
+            )
           ),
         }}
       />
       {/* Hidden tabs - still accessible but not shown in tab bar */}
-      <Tabs.Screen
-        name="bookings"
-        options={{
-          href: null,
-        }}
-      />
+
       <Tabs.Screen
         name="rides"
         options={{
@@ -237,5 +260,16 @@ const styles = StyleSheet.create({
   },
   iconWrapperActive: {
     backgroundColor: "rgba(59, 130, 246, 0.15)",
+  },
+  profileTabAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#A1A1AA",
+  },
+  profileTabAvatarActive: {
+    borderColor: "#3B82F6",
+    borderWidth: 2,
   },
 });

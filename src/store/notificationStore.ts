@@ -1,5 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 import api from "../lib/api";
+import { getItemAsync } from "expo-secure-store";
 
 export interface Notification {
   _id: string;
@@ -36,6 +37,10 @@ class NotificationStore {
   }
 
   async fetchNotifications(silent = false) {
+    // Skip if no token available
+    const token = await getItemAsync("accessToken");
+    if (!token) return;
+
     if (!silent) this.loading = true;
     this.error = null;
     try {

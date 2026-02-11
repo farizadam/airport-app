@@ -134,6 +134,12 @@ export default function MyRequestsScreen() {
             <Ionicons name="people-outline" size={14} color="#666" />
             <Text style={styles.detailText}>{item.seats_needed} seat(s)</Text>
           </View>
+          {(item.luggage_count > 0) && (
+            <View style={styles.detailItem}>
+              <Ionicons name="briefcase-outline" size={14} color="#666" />
+              <Text style={styles.detailText}>{item.luggage_count} bag(s)</Text>
+            </View>
+          )}
         </View>
 
         {hasOffers && (

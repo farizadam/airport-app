@@ -4,7 +4,7 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { useEffect } from "react";
@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useAuthStore } from "@/store/authStore";
+import AppToast from "@/components/ui/AppToast";
 
 export const unstable_settings = {
   initialRouteName: "index",
@@ -23,6 +24,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const segments = useSegments();
+  const navigationRef = useNavigationContainerRef();
   const { isAuthenticated, isLoading, loadUser } = useAuthStore();
 
   useEffect(() => {
@@ -31,12 +33,14 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (isLoading) return;
+    if (!navigationRef?.isReady()) return;
 
     const inAuthGroup = segments[0] === "(tabs)";
     const isOnPublicPage =
       segments[0] === undefined || // index page
       segments[0] === "login" ||
-      segments[0] === "register";
+      segments[0] === "register" ||
+      segments[0] === "forgot-password";
 
     if (!isAuthenticated && inAuthGroup) {
       router.replace("/login");
@@ -69,6 +73,7 @@ export default function RootLayout() {
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="register" options={{ headerShown: false }} />
+            <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: "modal" }} />
             <Stack.Screen
@@ -97,6 +102,7 @@ export default function RootLayout() {
             />
           </Stack>
           <StatusBar style="auto" />
+          <AppToast />
         </ThemeProvider>
       </StripeProvider>
     </GestureHandlerRootView>

@@ -231,21 +231,82 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(({
         
         function updateRoute(routeData) {
             routeLayer.clearLayers();
-            if (!routeData || routeData.length === 0) return;
+            if (!routeData || routeData.length < 2) return;
             
+            // Use OSRM to get actual road route instead of straight line
+            var start = routeData[0];
+            var end = routeData[routeData.length - 1];
+            
+            // Build waypoints string for OSRM (lng,lat format)
+            var waypoints = routeData.map(function(c) {
+                return c.longitude + ',' + c.latitude;
+            }).join(';');
+            
+            var osrmUrl = 'https://router.project-osrm.org/route/v1/driving/' + waypoints + '?overview=full&geometries=geojson';
+            
+            fetch(osrmUrl)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    routeLayer.clearLayers();
+                    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                        var coords = data.routes[0].geometry.coordinates.map(function(c) {
+                            return [c[1], c[0]]; // GeoJSON is [lng, lat], Leaflet needs [lat, lng]
+                        });
+                        var polyline = L.polyline(coords, {
+                            color: '#3B82F6',
+                            weight: 5,
+                            opacity: 0.8,
+                            smoothFactor: 1
+                        }).addTo(routeLayer);
+                        
+                        // Add direction arrow decorations using simple markers
+                        if (coords.length > 1) {
+                            // Add start marker
+                            L.circleMarker(coords[0], {
+                                radius: 6,
+                                fillColor: '#22C55E',
+                                color: '#fff',
+                                weight: 2,
+                                fillOpacity: 1
+                            }).addTo(routeLayer);
+                            
+                            // Add end marker
+                            L.circleMarker(coords[coords.length - 1], {
+                                radius: 6,
+                                fillColor: '#EF4444',
+                                color: '#fff',
+                                weight: 2,
+                                fillOpacity: 1
+                            }).addTo(routeLayer);
+                        }
+                        
+                        try {
+                            map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+                        } catch(e) {}
+                    } else {
+                        // Fallback to straight line if OSRM fails
+                        drawStraightRoute(routeData);
+                    }
+                })
+                .catch(function(err) {
+                    console.log('OSRM routing failed, falling back to straight line:', err);
+                    drawStraightRoute(routeData);
+                });
+        }
+        
+        function drawStraightRoute(routeData) {
+            routeLayer.clearLayers();
             var latlngs = routeData.map(function(c) { return [c.latitude, c.longitude]; });
             var polyline = L.polyline(latlngs, {
                 color: '#3B82F6', 
                 weight: 5,
-                opacity: 0.8
+                opacity: 0.8,
+                dashArray: '10, 10'
             }).addTo(routeLayer);
             
-            // Fit bounds to show the whole route
             try {
                 map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
-            } catch(e) {
-                // Ignore bounds error if invalid
-            }
+            } catch(e) {}
         }
 
         // Initialize with empty data - logic will inject data

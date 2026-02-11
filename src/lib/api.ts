@@ -55,10 +55,7 @@ api.interceptors.request.use(
     );
     const token = await SecureStore.getItemAsync("accessToken");
     if (token) {
-      console.log("✅ Token found, adding to request");
       config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.warn("⚠️ No token found in SecureStore!");
     }
     return config;
   },
@@ -75,10 +72,6 @@ api.interceptors.response.use(
       const data = error.response.data as any;
       const message = data?.message || JSON.stringify(data);
       console.log(`❌ Backend Error [${status}]: ${message}`);
-
-      if (status === 401 || status === 404) {
-        console.log("👉 TIP: You are on a new database. Please REGISTER a new account first.");
-      }
     } else if (error.request) {
       console.log("❌ Network Error: Server is unreachable.");
       console.log(`   Target: ${API_BASE_URL}`);

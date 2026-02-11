@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -25,6 +24,7 @@ import { useRequestStore } from "../../../src/store/requestStore";
 import { useAirportStore } from "../../../src/store/airportStore";
 import { useAuthStore } from "../../../src/store/authStore";
 import ProfileAvatar from "@/components/ProfileAvatar";
+import { toast } from "../../../src/store/toastStore";
 
 export default function AvailableRequestsScreen() {
   const router = useRouter();
@@ -158,7 +158,7 @@ export default function AvailableRequestsScreen() {
 
   const handleSubmitOffer = async () => {
     if (!offerPrice || parseFloat(offerPrice) <= 0) {
-      Alert.alert("Error", "Please enter a valid price");
+      toast.warning("Invalid Price", "Please enter a valid price");
       return;
     }
 
@@ -168,11 +168,11 @@ export default function AvailableRequestsScreen() {
         price_per_seat: parseFloat(offerPrice),
         message: offerMessage || undefined,
       });
-      Alert.alert("Success", "Your offer has been sent to the passenger!");
+      toast.success("Offer Sent!", "Your offer has been sent to the passenger!");
       setOfferModalVisible(false);
       loadRequests();
     } catch (err: any) {
-      Alert.alert("Error", err.message);
+      toast.error("Error", err.message);
     } finally {
       setSubmittingOffer(false);
     }
@@ -214,14 +214,14 @@ export default function AvailableRequestsScreen() {
           <Text style={[styles.passengerName, { color: '#3B82F6' }]}>
             {item.passenger?.first_name} {item.passenger?.last_name}
           </Text>
-          {item.passenger?.rating && (
+          {item.passenger?.rating ? (
             <View style={styles.ratingRow}>
               <Ionicons name="star" size={12} color="#ffc107" />
               <Text style={styles.ratingText}>
                 {item.passenger.rating.toFixed(1)}
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
       </TouchableOpacity>
 

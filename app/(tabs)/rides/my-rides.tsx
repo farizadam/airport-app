@@ -109,6 +109,12 @@ export default function MyRidesScreen() {
           {ride.seats_total || ride.total_seats} seats available
         </Text>
 
+        {(ride.luggage_capacity > 0) && (
+          <Text style={[styles.rideSeats, { marginTop: 2 }]}>
+            {ride.luggage_left ?? ride.luggage_capacity}/{ride.luggage_capacity} luggage space
+          </Text>
+        )}
+
         {(ride.pending_count || ride.accepted_count) ? (
             <Text style={styles.bookingSummary}>
               Requests: {ride.pending_count || 0} pending /{" "}
@@ -121,7 +127,7 @@ export default function MyRidesScreen() {
             {ride.bookings.slice(0, 2).map((b: any) => (
               <Text key={b.id} style={styles.bookingItem}>
                 {b.passenger_first_name || "Passenger"}{" "}
-                {b.passenger_last_name || ""} · {b.seats} seat(s) ·{" "}
+                {b.passenger_last_name || ""} · {b.seats} seat(s){b.luggage_count > 0 ? ` · ${b.luggage_count} bag(s)` : ''} ·{" "}
                 {b.status}
               </Text>
             ))}

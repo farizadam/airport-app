@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useWalletStore, Transaction } from "@/store/walletStore";
+import { toast } from "../../../src/store/toastStore";
 
 export default function WalletScreen() {
   const router = useRouter();
@@ -60,7 +61,7 @@ export default function WalletScreen() {
     if (result?.url) {
       Linking.openURL(result.url);
     } else {
-      Alert.alert('Error', "Failed to start bank connection process");
+      toast.error("Error", "Failed to start bank connection process");
     }
   };
 
@@ -78,10 +79,7 @@ export default function WalletScreen() {
     }
 
     if (!wallet?.can_withdraw) {
-      Alert.alert(
-        'Minimum Balance Required',
-        `You need at least ${wallet?.minimum_withdrawal_display || "5.00"} EUR to withdraw.`
-      );
+      toast.info("Minimum Balance Required", `You need at least ${wallet?.minimum_withdrawal_display || "5.00"} EUR to withdraw.`);
       return;
     }
 

@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -23,6 +26,7 @@ import ProfileAvatar from "@/components/ProfileAvatar";
 import { getLocationInfo, LOCATION_COLORS, TripData } from "@/utils/tripDisplayUtils";
 import { useStripe } from "@stripe/stripe-react-native";
 import { api } from "@/lib/api";
+import { toast } from "../../src/store/toastStore";
 
 export default function RequestDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -63,7 +67,7 @@ export default function RequestDetailsScreen() {
             getWallet().catch(err => console.log("Wallet fetch error:", err));
           } catch (error) {
             console.error("Failed to load request:", error);
-            Alert.alert("Error", "Failed to load request details");
+            toast.error("Error", "Failed to load request details");
           } finally {
             setLoading(false);
           }
@@ -91,11 +95,10 @@ export default function RequestDetailsScreen() {
             setIsCancelling(true);
             try {
               await cancelRequest(id);
-              Alert.alert("Success", "Request cancelled successfully", [
-                { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=myrequests") }
-              ]);
+              toast.success("Request Cancelled", "Request cancelled successfully");
+              router.replace("/(tabs)/explore?tab=myrequests");
             } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to cancel request");
+              toast.error("Error", error.message || "Failed to cancel request");
             } finally {
               setIsCancelling(false);
             }
@@ -112,7 +115,7 @@ export default function RequestDetailsScreen() {
 
   const handleSubmitOffer = async () => {
     if (!offerPrice || parseFloat(offerPrice) <= 0) {
-      Alert.alert("Error", "Please enter a valid price per seat");
+      toast.warning("Invalid Price", "Please enter a valid price per seat");
       return;
     }
 
@@ -121,14 +124,11 @@ export default function RequestDetailsScreen() {
       await makeOffer(id, {
         price_per_seat: parseFloat(offerPrice),
       });
-      Alert.alert("Success", "Your offer has been sent to the passenger!", [
-        { text: "OK", onPress: () => {
-          setOfferModalVisible(false);
-          router.replace("/(tabs)/explore?tab=myoffers");
-        }}
-      ]);
+      toast.success("Offer Sent!", "Your offer has been sent to the passenger!");
+      setOfferModalVisible(false);
+      router.replace("/(tabs)/explore?tab=myoffers");
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to send offer");
+      toast.error("Error", err.message || "Failed to send offer");
     } finally {
       setSubmittingOffer(false);
     }
@@ -158,9 +158,9 @@ export default function RequestDetailsScreen() {
               // Refresh request data
               const data = await fetchRequestById(id);
               setRequest(data);
-              Alert.alert("Success", "Offer rejected");
+              toast.success("Offer Rejected", "Offer rejected");
             } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to reject offer");
+              toast.error("Error", err.message || "Failed to reject offer");
             } finally {
               setRejectingOfferId(null);
             }
@@ -187,14 +187,11 @@ export default function RequestDetailsScreen() {
       // Refresh wallet
       await getWallet();
       
-      Alert.alert(
-        "🎉 Success!",
-        `Offer accepted!\n\nPaid with wallet balance.\nNo Stripe fees applied! 💰`,
-        [{ text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=active") }]
-      );
+      toast.success("🎉 Payment Complete!", "Offer accepted! Paid with wallet balance.\nNo Stripe fees applied! 💰");
+      router.replace("/(tabs)/explore?tab=active");
     } catch (error: any) {
       console.log("Wallet payment error:", error);
-      Alert.alert("Error", error.response?.data?.message || error.message || "Payment failed");
+      toast.error("Payment Failed", error.response?.data?.message || error.message || "Payment failed");
     } finally {
       setProcessingPayment(false);
     }
@@ -221,7 +218,7 @@ export default function RequestDetailsScreen() {
       });
       
       if (initResult.error) {
-        Alert.alert("Error", initResult.error.message || "Failed to initialize payment");
+        toast.error("Error", initResult.error.message || "Failed to initialize payment");
         setProcessingPayment(false);
         return;
       }
@@ -230,7 +227,7 @@ export default function RequestDetailsScreen() {
       const paymentResult = await presentPaymentSheet();
       
       if (paymentResult.error) {
-        Alert.alert("Payment Cancelled", paymentResult.error.message || "Payment was not completed.");
+        toast.info("Payment Cancelled", paymentResult.error.message || "Payment was not completed.");
         setProcessingPayment(false);
         return;
       }
@@ -244,12 +241,11 @@ export default function RequestDetailsScreen() {
       
       setPaymentModalVisible(false);
       
-      Alert.alert("Success", "Payment completed! Offer accepted.", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=active") }
-      ]);
+      toast.success("Payment Complete!", "Offer accepted successfully.");
+      router.replace("/(tabs)/explore?tab=active");
     } catch (error: any) {
       console.log("Card payment error:", error);
-      Alert.alert("Error", error.response?.data?.message || error.message || "Payment failed");
+      toast.error("Payment Failed", error.response?.data?.message || error.message || "Payment failed");
     } finally {
       setProcessingPayment(false);
     }
@@ -534,11 +530,11 @@ export default function RequestDetailsScreen() {
                         <Text style={styles.offerDriverName}>
                           {driverObj.first_name || "Driver"} {driverObj.last_name || ""}
                         </Text>
-                        {driverObj.rating && (
+                        {driverObj.rating ? (
                           <Text style={styles.offerDriverRating}>
                             ★ {driverObj.rating.toFixed(1)}
                           </Text>
-                        )}
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                     
@@ -602,6 +598,111 @@ export default function RequestDetailsScreen() {
           </View>
         )}
 
+        {/* Accepted Offer Section - For driver whose offer was accepted */}
+        {!isOwner && request.status === 'accepted' && (() => {
+          const myOffer = request.offers?.find((o: Offer) => {
+            const driverId = o.driver?._id || o.driver?.id || o.driver;
+            return driverId?.toString() === user?._id;
+          });
+          
+          if (myOffer && myOffer.status === 'accepted') {
+            const passengerObj = request.passenger || request.passenger_id;
+            const totalPrice = (myOffer.price_per_seat || 0) * (request.seats_needed || 1);
+            
+            return (
+              <View style={styles.section}>
+                <View style={[styles.statusBadge, { backgroundColor: '#DCFCE7', alignSelf: 'flex-start', marginBottom: 16 }]}>
+                  <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginRight: 6 }} />
+                  <Text style={[styles.statusText, { color: '#16A34A' }]}>
+                    YOUR OFFER WAS ACCEPTED!
+                  </Text>
+                </View>
+
+                <Text style={styles.sectionTitle}>Passenger Details</Text>
+                
+                <TouchableOpacity 
+                  style={styles.acceptedPassengerCard}
+                  onPress={() => {
+                    const passengerId = passengerObj?._id || passengerObj?.id;
+                    if (passengerId) {
+                      router.push({ pathname: "/user-profile/[id]", params: { id: passengerId } });
+                    }
+                  }}
+                >
+                  <ProfileAvatar
+                    userId={passengerObj?._id || passengerObj?.id}
+                    firstName={passengerObj?.first_name}
+                    lastName={passengerObj?.last_name}
+                    avatarUrl={passengerObj?.avatar_url}
+                    rating={passengerObj?.rating}
+                    size="medium"
+                    showRating
+                    disabled
+                  />
+                  <View style={{ marginLeft: 14, flex: 1 }}>
+                    <Text style={styles.acceptedPassengerName}>
+                      {passengerObj?.first_name} {passengerObj?.last_name}
+                    </Text>
+                    {passengerObj?.phone && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Ionicons name="call-outline" size={14} color="#64748B" />
+                        <Text style={styles.acceptedPassengerPhone}> {passengerObj.phone}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </TouchableOpacity>
+
+                <View style={styles.tripSummaryCard}>
+                  <View style={styles.tripSummaryRow}>
+                    <Text style={styles.tripSummaryLabel}>Seats:</Text>
+                    <Text style={styles.tripSummaryValue}>{request.seats_needed}</Text>
+                  </View>
+                  <View style={styles.tripSummaryRow}>
+                    <Text style={styles.tripSummaryLabel}>Luggage:</Text>
+                    <Text style={styles.tripSummaryValue}>{request.luggage_count || 0}</Text>
+                  </View>
+                  <View style={styles.tripSummaryRow}>
+                    <Text style={styles.tripSummaryLabel}>Price per seat:</Text>
+                    <Text style={styles.tripSummaryValue}>{myOffer.price_per_seat} EUR</Text>
+                  </View>
+                  <View style={[styles.tripSummaryRow, { borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10, marginTop: 6 }]}>
+                    <Text style={[styles.tripSummaryLabel, { fontWeight: '700' }]}>Total Earning:</Text>
+                    <Text style={[styles.tripSummaryValue, { fontWeight: '700', color: '#16A34A', fontSize: 18 }]}>
+                      {totalPrice} EUR
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.contactButtonsRow}>
+                  <TouchableOpacity 
+                    style={[styles.chatContactBtn, { flex: 1 }]}
+                    onPress={() => {
+                      router.push({ 
+                        pathname: "/chat", 
+                        params: { requestId: request._id } 
+                      });
+                    }}
+                  >
+                    <Ionicons name="chatbubbles" size={20} color="#fff" />
+                    <Text style={styles.chatContactBtnText}>Chat with Passenger</Text>
+                  </TouchableOpacity>
+                  {passengerObj?.phone && (
+                    <TouchableOpacity 
+                      style={[styles.callContactBtn, { flex: 1 }]}
+                      onPress={() => Linking.openURL(`tel:${passengerObj.phone}`)}
+                    >
+                      <Ionicons name="call" size={18} color="#fff" />
+                      <Text style={styles.callContactBtnText}>Call</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          }
+          return null;
+        })()}
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -653,6 +754,10 @@ export default function RequestDetailsScreen() {
         transparent={true}
         onRequestClose={() => setOfferModalVisible(false)}
       >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Offer a Ride</Text>
@@ -689,11 +794,11 @@ export default function RequestDetailsScreen() {
               <Text style={styles.modalInfoText}>
                 Seats needed: {request.seats_needed}
               </Text>
-              {request.max_price_per_seat && (
+              {request.max_price_per_seat ? (
                 <Text style={styles.modalInfoText}>
                   Max budget: {request.max_price_per_seat} EUR/seat
                 </Text>
-              )}
+              ) : null}
             </View>
 
             <View style={styles.inputContainer}>
@@ -707,11 +812,11 @@ export default function RequestDetailsScreen() {
               />
             </View>
 
-            {offerPrice && request.seats_needed && (
+            {offerPrice && request.seats_needed ? (
               <Text style={styles.totalPrice}>
                 Total: {(parseFloat(offerPrice) || 0) * request.seats_needed} EUR
               </Text>
-            )}
+            ) : null}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -735,6 +840,7 @@ export default function RequestDetailsScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Payment Selection Modal for accepting offers */}
@@ -1420,5 +1526,79 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#1E293B",
+  },
+  // Accepted Offer Styles
+  acceptedPassengerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  acceptedPassengerName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  acceptedPassengerPhone: {
+    fontSize: 14,
+    color: "#64748B",
+    marginLeft: 4,
+  },
+  tripSummaryCard: {
+    backgroundColor: "#F8FAFC",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  tripSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  tripSummaryLabel: {
+    fontSize: 14,
+    color: "#64748B",
+  },
+  tripSummaryValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1E293B",
+  },
+  contactButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chatContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  chatContactBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  callContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22C55E',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  callContactBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

@@ -23,6 +23,8 @@ import {
   TouchableOpacity,
   View,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -60,6 +62,7 @@ export default function RideDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [seats, setSeats] = useState("1");
+  const [luggageCount, setLuggageCount] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
   const [actionId, setActionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -155,6 +158,12 @@ export default function RideDetailsScreen() {
       return;
     }
 
+    const luggage = parseInt(luggageCount) || 0;
+    if (luggage > (ride?.luggage_left ?? ride?.luggage_capacity ?? 0)) {
+      Alert.alert("Error", `Only ${ride?.luggage_left ?? ride?.luggage_capacity ?? 0} luggage spot(s) available`);
+      return;
+    }
+
     // Check payment method selected
     if (paymentMethod === 'wallet') {
       processWalletPayment();
@@ -169,7 +178,7 @@ export default function RideDetailsScreen() {
       
       console.log("Processing wallet payment for ride:", id, "seats:", seats);
       
-      const result = await payWithWallet(id!, parseInt(seats));
+      const result = await payWithWallet(id!, parseInt(seats), parseInt(luggageCount) || 0);
       
       if (result.success) {
         // Refresh bookings
@@ -178,7 +187,7 @@ export default function RideDetailsScreen() {
         Alert.alert(
           "🎉 Success!", 
           `Booking confirmed!\n\nPaid with wallet balance.\nNew balance: €${(result.newBalance! / 100).toFixed(2)}\n\nNo Stripe fees applied! 💰`,
-          [{ text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=mybookings") }]
+          [{ text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=active") }]
         );
       } else {
         Alert.alert("Payment Failed", result.message || "Could not process wallet payment");
@@ -199,6 +208,7 @@ export default function RideDetailsScreen() {
       const response = await api.post("/payments/create-intent", {
         rideId: id,
         seats: parseInt(seats),
+        luggage_count: parseInt(luggageCount) || 0,
       });
       
       console.log("Payment intent response:", response.data);
@@ -235,6 +245,7 @@ export default function RideDetailsScreen() {
         paymentIntentId: paymentIntentId,
         rideId: id,
         seats: parseInt(seats),
+        luggage_count: parseInt(luggageCount) || 0,
       });
       
       console.log("Complete response:", completeResponse.data);
@@ -243,7 +254,7 @@ export default function RideDetailsScreen() {
       await getMyBookings();
       
       Alert.alert("Success", "Payment completed! Your booking is confirmed.", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=mybookings") }
+        { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=active") }
       ]);
       
     } catch (error: any) {
@@ -430,6 +441,73 @@ export default function RideDetailsScreen() {
           </View>
         </View>
 
+        {/* === Passenger Booking Status Banner === */}
+        {!isOwner && myBooking && (() => {
+          const statusConfig: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; bg: string; title: string; subtitle: string }> = {
+            pending: {
+              icon: 'hourglass-outline',
+              color: '#D97706',
+              bg: '#FFFBEB',
+              title: 'Booking Pending',
+              subtitle: 'Waiting for the driver to accept your request.',
+            },
+            accepted: {
+              icon: 'checkmark-circle',
+              color: '#16A34A',
+              bg: '#F0FDF4',
+              title: 'Booking Confirmed',
+              subtitle: 'Your seat is secured. You can view the map and contact the driver.',
+            },
+            rejected: {
+              icon: 'close-circle',
+              color: '#DC2626',
+              bg: '#FEF2F2',
+              title: 'Booking Rejected',
+              subtitle: 'The driver did not accept your booking. You have not been charged.',
+            },
+            cancelled: {
+              icon: 'ban',
+              color: '#DC2626',
+              bg: '#FEF2F2',
+              title: 'Booking Cancelled',
+              subtitle: 'This booking has been cancelled. Any payment will be refunded to your wallet.',
+            },
+          };
+          const cfg = statusConfig[myBooking.status] || statusConfig.pending;
+          return (
+            <View style={[styles.bookingBanner, { backgroundColor: cfg.bg, borderLeftColor: cfg.color }]}> 
+              <View style={styles.bookingBannerHeader}>
+                <Ionicons name={cfg.icon} size={22} color={cfg.color} />
+                <Text style={[styles.bookingBannerTitle, { color: cfg.color }]}>{cfg.title}</Text>
+              </View>
+              <Text style={styles.bookingBannerSubtitle}>{cfg.subtitle}</Text>
+              {myBooking.seats && (
+                <Text style={styles.bookingBannerMeta}>
+                  {myBooking.seats} seat(s) booked
+                </Text>
+              )}
+              {((myBooking.luggage_count ?? 0) > 0) && (
+                <Text style={styles.bookingBannerMeta}>
+                  {myBooking.luggage_count} luggage item(s)
+                </Text>
+              )}
+            </View>
+          );
+        })()}
+
+        {/* === Ride Cancelled Context for Passengers === */}
+        {!isOwner && !myBooking && ride.status === 'cancelled' && (
+          <View style={[styles.bookingBanner, { backgroundColor: '#FEF2F2', borderLeftColor: '#DC2626' }]}> 
+            <View style={styles.bookingBannerHeader}>
+              <Ionicons name="information-circle" size={22} color="#DC2626" />
+              <Text style={[styles.bookingBannerTitle, { color: '#DC2626' }]}>Ride Cancelled</Text>
+            </View>
+            <Text style={styles.bookingBannerSubtitle}>
+              This ride has been cancelled by the driver. If you had a booking, any payment has been refunded to your wallet.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Route</Text>
           {(() => {
@@ -500,6 +578,13 @@ export default function RideDetailsScreen() {
               </Text>
             </View>
             <View style={styles.detailItem}>
+              <Ionicons name="briefcase-outline" size={20} color="#64748B" />
+              <Text style={styles.detailLabel}>Luggage</Text>
+              <Text style={styles.detailValue}>
+                {ride.luggage_left ?? ride.luggage_capacity ?? 0} / {ride.luggage_capacity ?? 0}
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
               <Ionicons name="cash-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Price</Text>
               <Text style={[styles.detailValue, { color: '#16A34A' }]}>
@@ -540,36 +625,6 @@ export default function RideDetailsScreen() {
               <Text style={[styles.detailLabel, { color: '#3B82F6', fontWeight: '600' }]}>View Driver</Text>
             </TouchableOpacity>
           </View>
-          
-          {shouldShowMapAndDriver && (ride.driver?.phone || ride.driver?.phone_number) && (
-             <View style={styles.driverContactSection}>
-                <TouchableOpacity 
-                  style={styles.phoneRow}
-                  onPress={() => Linking.openURL(`tel:${ride.driver?.phone || ride.driver?.phone_number}`)}
-                >
-                  <Ionicons name="call-outline" size={16} color="#007AFF" />
-                  <Text style={[styles.phoneText, { color: '#007AFF' }]}>{ride.driver?.phone || ride.driver?.phone_number}</Text>
-                </TouchableOpacity>
-                {isAcceptedPassenger && myBooking && (
-                  <View style={styles.contactButtonsRow}>
-                    <TouchableOpacity 
-                      style={styles.chatContactBtn}
-                      onPress={() => router.push({ pathname: "/chat", params: { bookingId: myBooking._id || myBooking.id } })}
-                    >
-                      <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-                      <Text style={styles.chatContactBtnText}>Chat with Driver</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.callContactBtn}
-                      onPress={() => Linking.openURL(`tel:${ride.driver?.phone || ride.driver?.phone_number}`)}
-                    >
-                      <Ionicons name="call" size={18} color="#fff" />
-                      <Text style={styles.callContactBtnText}>Call</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-             </View>
-          )}
         </View>
 
         {ride.driver_comment && (
@@ -578,6 +633,100 @@ export default function RideDetailsScreen() {
             <Text style={styles.notesText}>{ride.driver_comment}</Text>
           </View>
         )}
+
+        {/* Accepted Passenger Section - Show driver details and chat */}
+        {!isOwner && isAcceptedPassenger && myBooking && (() => {
+          const driverObj = ride.driver || (typeof ride.driver_id === 'object' ? ride.driver_id : null);
+          const totalPrice = (ride.price_per_seat || 0) * (myBooking.seats || myBooking.seats_booked || 1);
+          
+          return (
+            <View style={styles.section}>
+              <View style={[styles.statusBadge, { backgroundColor: '#DCFCE7', alignSelf: 'flex-start', marginBottom: 16 }]}>
+                <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginRight: 6 }} />
+                <Text style={[styles.statusText, { color: '#16A34A' }]}>
+                  BOOKING CONFIRMED!
+                </Text>
+              </View>
+
+              <Text style={styles.sectionTitle}>Driver Details</Text>
+              
+              <TouchableOpacity 
+                style={styles.acceptedDriverCard}
+                onPress={() => {
+                  const driverId = driverObj?._id || driverObj?.id;
+                  if (driverId) {
+                    router.push({ pathname: "/user-profile/[id]", params: { id: driverId } });
+                  }
+                }}
+              >
+                <ProfileAvatar
+                  userId={driverObj?._id || driverObj?.id}
+                  firstName={driverObj?.first_name}
+                  lastName={driverObj?.last_name}
+                  avatarUrl={driverObj?.avatar_url}
+                  rating={driverObj?.rating}
+                  size="medium"
+                  showRating
+                  disabled
+                />
+                <View style={{ marginLeft: 14, flex: 1 }}>
+                  <Text style={styles.acceptedDriverName}>
+                    {driverObj?.first_name} {driverObj?.last_name}
+                  </Text>
+                  {(ride.driver?.phone || ride.driver?.phone_number || driverObj?.phone) && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <Ionicons name="call-outline" size={14} color="#64748B" />
+                      <Text style={styles.acceptedDriverPhone}> {ride.driver?.phone || ride.driver?.phone_number || driverObj?.phone}</Text>
+                    </View>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+              </TouchableOpacity>
+
+              <View style={styles.tripSummaryCard}>
+                <View style={styles.tripSummaryRow}>
+                  <Text style={styles.tripSummaryLabel}>Seats booked:</Text>
+                  <Text style={styles.tripSummaryValue}>{myBooking.seats || myBooking.seats_booked || 1}</Text>
+                </View>
+                {((myBooking.luggage_count ?? 0) > 0) && (
+                  <View style={styles.tripSummaryRow}>
+                    <Text style={styles.tripSummaryLabel}>Luggage:</Text>
+                    <Text style={styles.tripSummaryValue}>{myBooking.luggage_count} item(s)</Text>
+                  </View>
+                )}
+                <View style={styles.tripSummaryRow}>
+                  <Text style={styles.tripSummaryLabel}>Price per seat:</Text>
+                  <Text style={styles.tripSummaryValue}>{ride.price_per_seat} EUR</Text>
+                </View>
+                <View style={[styles.tripSummaryRow, { borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10, marginTop: 6 }]}>
+                  <Text style={[styles.tripSummaryLabel, { fontWeight: '700' }]}>Total Paid:</Text>
+                  <Text style={[styles.tripSummaryValue, { fontWeight: '700', color: '#16A34A', fontSize: 18 }]}>
+                    {totalPrice} EUR
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.contactButtonsRow}>
+                <TouchableOpacity 
+                  style={[styles.chatContactBtn, { flex: 1 }]}
+                  onPress={() => router.push({ pathname: "/chat", params: { bookingId: myBooking._id || myBooking.id } })}
+                >
+                  <Ionicons name="chatbubbles" size={20} color="#fff" />
+                  <Text style={styles.chatContactBtnText}>Chat with Driver</Text>
+                </TouchableOpacity>
+                {(ride.driver?.phone || ride.driver?.phone_number || driverObj?.phone) && (
+                  <TouchableOpacity 
+                    style={[styles.callContactBtn, { flex: 1 }]}
+                    onPress={() => Linking.openURL(`tel:${ride.driver?.phone || ride.driver?.phone_number || driverObj?.phone}`)}
+                  >
+                    <Ionicons name="call" size={18} color="#fff" />
+                    <Text style={styles.callContactBtnText}>Call</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })()}
 
         {isOwner && rideBookings && rideBookings.length > 0 && (
           <View style={styles.section}>
@@ -635,6 +784,14 @@ export default function RideDetailsScreen() {
                      {booking.seats || booking.seats_booked || 1} seat(s) requested
                    </Text>
                 </View>
+                {(booking.luggage_count > 0) && (
+                  <View style={[styles.passengerRow, { marginTop: 4 }]}>
+                    <Ionicons name="briefcase-outline" size={16} color="#64748B" />
+                    <Text style={styles.bookingInfo}>
+                      {booking.luggage_count} luggage item(s)
+                    </Text>
+                  </View>
+                )}
 
                 {/* Pickup/Dropoff Locations */}
                 {(booking.pickup_location?.address || booking.dropoff_location?.address) && (
@@ -673,21 +830,21 @@ export default function RideDetailsScreen() {
                         </Text>
                     </TouchableOpacity>
                     )}
-                    <View style={styles.contactButtonsRow}>
+                    <View style={styles.driverContactButtonsRow}>
                       <TouchableOpacity 
-                        style={styles.chatContactBtn}
+                        style={[styles.driverChatBtn, { flex: 1 }]}
                         onPress={() => router.push({ pathname: "/chat", params: { bookingId: booking._id || booking.id } })}
                       >
-                        <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-                        <Text style={styles.chatContactBtnText}>Chat</Text>
+                        <Ionicons name="chatbubbles" size={20} color="#fff" />
+                        <Text style={styles.driverChatBtnText}>Chat</Text>
                       </TouchableOpacity>
                       {(booking.passenger_phone || booking.passenger?.phone) && (
                         <TouchableOpacity 
-                          style={styles.callContactBtn}
+                          style={[styles.driverCallBtn, { flex: 1 }]}
                           onPress={() => Linking.openURL(`tel:${booking.passenger_phone || booking.passenger?.phone}`)}
                         >
                           <Ionicons name="call" size={18} color="#fff" />
-                          <Text style={styles.callContactBtnText}>Call</Text>
+                          <Text style={styles.driverCallBtnText}>Call</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -731,7 +888,7 @@ export default function RideDetailsScreen() {
 
       
       <View style={styles.footer}>
-          {!isOwner && ride.status === "active" && (ride.seats_left ?? 0) > 0 && (
+          {!isOwner && ride.status === "active" && (ride.seats_left ?? 0) > 0 && !myBooking && (
              <TouchableOpacity
                style={styles.primaryButton}
                onPress={() => {
@@ -755,6 +912,12 @@ export default function RideDetailsScreen() {
                <Ionicons name="car" size={20} color="#fff" />
                <Text style={styles.primaryButtonText}>Book This Ride</Text>
              </TouchableOpacity>
+          )}
+          {!isOwner && myBooking?.status === 'pending' && (
+            <View style={styles.pendingFooterBanner}>
+              <Ionicons name="hourglass-outline" size={18} color="#D97706" />
+              <Text style={styles.pendingFooterText}>Waiting for driver approval...</Text>
+            </View>
           )}
 
           {isOwner && (
@@ -808,6 +971,10 @@ export default function RideDetailsScreen() {
         animationType="slide"
         onRequestClose={() => setBookingModalVisible(false)}
       >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Book Ride</Text>
@@ -815,6 +982,9 @@ export default function RideDetailsScreen() {
             <View style={styles.modalInfo}>
               <Text style={styles.modalInfoText}>
                 Available: {ride.seats_left} seats
+              </Text>
+              <Text style={styles.modalInfoText}>
+                Luggage space: {ride.luggage_left ?? ride.luggage_capacity ?? 0} spot(s)
               </Text>
               <Text style={styles.modalInfoText}>
                 Price: {ride.price_per_seat} EUR per seat
@@ -829,6 +999,17 @@ export default function RideDetailsScreen() {
                 onChangeText={setSeats}
                 keyboardType="number-pad"
                 placeholder="1"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Number of Luggage</Text>
+              <TextInput
+                style={styles.input}
+                value={luggageCount}
+                onChangeText={setLuggageCount}
+                keyboardType="number-pad"
+                placeholder="0"
               />
             </View>
 
@@ -955,6 +1136,7 @@ export default function RideDetailsScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1004,6 +1186,54 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     fontWeight: "700",
+  },
+  // Passenger booking status banner
+  bookingBanner: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+  },
+  bookingBannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  bookingBannerTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  bookingBannerSubtitle: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 20,
+    marginLeft: 30,
+  },
+  bookingBannerMeta: {
+    fontSize: 13,
+    color: "#64748B",
+    marginLeft: 30,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  pendingFooterBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFBEB",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    flex: 1,
+  },
+  pendingFooterText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#D97706",
   },
   section: {
     backgroundColor: "#fff",
@@ -1439,5 +1669,111 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 4,
+  },
+  // Accepted Driver/Passenger Styles
+  acceptedDriverCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  acceptedDriverName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  acceptedDriverPhone: {
+    fontSize: 14,
+    color: "#64748B",
+    marginLeft: 4,
+  },
+  tripSummaryCard: {
+    backgroundColor: "#F8FAFC",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  tripSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  tripSummaryLabel: {
+    fontSize: 14,
+    color: "#64748B",
+  },
+  tripSummaryValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1E293B",
+  },
+  contactButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chatContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  chatContactBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  callContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22C55E',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  callContactBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  driverContactButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  driverChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  driverChatBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  driverCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28A745',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  driverCallBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

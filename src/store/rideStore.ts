@@ -35,6 +35,7 @@ interface CreateRideData {
   home_longitude?: number;
   total_seats: number;
   price_per_seat: number;
+  luggage_capacity?: number;
   driver_comment?: string;
 }
 
@@ -151,6 +152,7 @@ export const useRideStore = create<RideState>((set) => ({
         home_longitude: data.home_longitude,
         seats_total: data.total_seats,
         price_per_seat: data.price_per_seat,
+        luggage_capacity: data.luggage_capacity || 0,
         comment: data.driver_comment || "",
       };
       console.log("🚗 Creating ride with data:", JSON.stringify(backendData, null, 2));
@@ -203,6 +205,7 @@ export const useRideStore = create<RideState>((set) => ({
       if (data.home_longitude) backendData.home_longitude = data.home_longitude;
       if (data.total_seats) backendData.seats_total = data.total_seats;
       if (data.price_per_seat) backendData.price_per_seat = data.price_per_seat;
+      if (data.luggage_capacity !== undefined) backendData.luggage_capacity = data.luggage_capacity;
       if (data.driver_comment !== undefined) backendData.comment = data.driver_comment;
 
       const response = await api.patch<{ data: Ride }>(`/rides/${id}`, backendData);

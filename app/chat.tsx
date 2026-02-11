@@ -9,11 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Linking,
 } from "react-native";
+import { toast } from "../src/store/toastStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
@@ -73,7 +73,7 @@ interface ChatInfo {
 
 export default function ChatScreen() {
   const router = useRouter();
-  const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
+  const { bookingId, requestId } = useLocalSearchParams<{ bookingId?: string; requestId?: string }>();
   const { user } = useAuthStore();
   const flatListRef = useRef<FlatList>(null);
 
@@ -87,9 +87,9 @@ export default function ChatScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
-  // Clear state when bookingId changes to prevent showing old messages
+  // Clear state when bookingId or requestId changes to prevent showing old messages
   useEffect(() => {
-    console.log("🔄 BookingId changed to:", bookingId);
+    console.log("🔄 Chat params changed:", { bookingId, requestId });
     // Reset state for new chat
     setMessages([]);
     setChatInfo(null);
@@ -97,21 +97,26 @@ export default function ChatScreen() {
     setInputText("");
     setPreviewImage(null);
     setSelectedImage(null);
-  }, [bookingId]);
+  }, [bookingId, requestId]);
 
   // Fetch chat info and messages
   const fetchChatData = useCallback(async () => {
-    if (!bookingId) {
-      console.log("No bookingId provided");
+    if (!bookingId && !requestId) {
+      console.log("No bookingId or requestId provided");
       return;
     }
 
-    console.log("📨 Fetching chat data for booking:", bookingId);
+    const chatType = requestId ? 'request' : 'booking';
+    const chatId = requestId || bookingId;
+    console.log(`📨 Fetching ${chatType} chat data for:`, chatId);
 
     try {
+      const endpoint = requestId ? `/chat/request/${chatId}` : `/chat/${chatId}`;
+      const infoEndpoint = requestId ? `/chat/request/${chatId}/info` : `/chat/${chatId}/info`;
+      
       const [infoRes, messagesRes] = await Promise.all([
-        api.get(`/chat/${bookingId}/info`),
-        api.get(`/chat/${bookingId}`),
+        api.get(infoEndpoint),
+        api.get(endpoint),
       ]);
 
       console.log("✅ Chat info response:", JSON.stringify(infoRes.data, null, 2));
@@ -121,27 +126,29 @@ export default function ChatScreen() {
       setMessages(messagesRes.data.data || []);
     } catch (error: any) {
       console.error("❌ Fetch chat data error:", error?.response?.data || error.message);
-      Alert.alert("Error", error.response?.data?.message || "Failed to load chat");
+      toast.error("Error", error.response?.data?.message || "Failed to load chat");
       router.back();
     } finally {
       setLoading(false);
     }
-  }, [bookingId]);
+  }, [bookingId, requestId]);
 
   useFocusEffect(
     useCallback(() => {
       fetchChatData();
       // Poll for new messages every 5 seconds
       const interval = setInterval(() => {
-        if (bookingId) {
-          api.get(`/chat/${bookingId}`).then((res) => {
+        const chatId = requestId || bookingId;
+        if (chatId) {
+          const endpoint = requestId ? `/chat/request/${chatId}` : `/chat/${chatId}`;
+          api.get(endpoint).then((res) => {
             setMessages(res.data.data || []);
           }).catch(() => {});
         }
       }, 5000);
 
       return () => clearInterval(interval);
-    }, [fetchChatData, bookingId])
+    }, [fetchChatData, bookingId, requestId])
   );
 
   const sendMessage = async () => {
@@ -152,7 +159,10 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
-      const res = await api.post(`/chat/${bookingId}`, {
+      const chatId = requestId || bookingId;
+      const endpoint = requestId ? `/chat/request/${chatId}` : `/chat/${chatId}`;
+      
+      const res = await api.post(endpoint, {
         content: text,
         message_type: "text",
       });
@@ -160,7 +170,7 @@ export default function ChatScreen() {
       setMessages((prev) => [...prev, res.data.data]);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error: any) {
-      Alert.alert("Error", "Failed to send message");
+      toast.error("Error", "Failed to send message");
       setInputText(text);
     } finally {
       setSending(false);
@@ -171,7 +181,7 @@ export default function ChatScreen() {
     setImageModalVisible(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission Required", "Please grant access to your photo library.");
+      toast.warning("Permission Required", "Please grant access to your photo library.");
       return;
     }
 
@@ -199,7 +209,7 @@ export default function ChatScreen() {
     setImageModalVisible(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission Required", "Please grant access to your camera.");
+      toast.warning("Permission Required", "Please grant access to your camera.");
       return;
     }
 
@@ -237,7 +247,10 @@ export default function ChatScreen() {
     setUploadingImage(true);
     try {
       console.log("Sending image, size:", Math.round(base64.length / 1024), "KB");
-      const res = await api.post(`/chat/${bookingId}`, {
+      const chatId = requestId || bookingId;
+      const endpoint = requestId ? `/chat/request/${chatId}` : `/chat/${chatId}`;
+      
+      const res = await api.post(endpoint, {
         content: "",
         message_type: "image",
         image: `data:${mimeType};base64,${base64}`,
@@ -247,7 +260,7 @@ export default function ChatScreen() {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error: any) {
       console.error("Image upload error:", error.response?.data || error.message);
-      Alert.alert("Error", error.response?.data?.message || "Failed to send image. Try a smaller image.");
+      toast.error("Upload Failed", error.response?.data?.message || "Failed to send image. Try a smaller image.");
     } finally {
       setUploadingImage(false);
     }

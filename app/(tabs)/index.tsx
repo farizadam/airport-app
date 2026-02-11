@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import React from "react";
 import {
   Dimensions,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -67,10 +68,17 @@ export default function HomeScreen() {
               onPress={() => router.push("/(tabs)/profile")}
             >
               <View style={styles.avatarContainer}>
-                <Text style={styles.avatarText}>
-                  {user?.first_name?.[0]}
-                  {user?.last_name?.[0]}
-                </Text>
+                {user?.avatar_url ? (
+                  <Image
+                    source={{ uri: user.avatar_url }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <Text style={styles.avatarText}>
+                    {user?.first_name?.[0]}
+                    {user?.last_name?.[0]}
+                  </Text>
+                )}
               </View>
             </TouchableOpacity>
           ) : (
@@ -312,6 +320,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 2,
     borderColor: "#fff",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   avatarText: {
     fontSize: 16,

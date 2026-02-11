@@ -16,6 +16,7 @@ import { useRequestStore } from "@/store/requestStore";
 import { useAuthStore } from "@/store/authStore";
 import { RideRequest } from "@/types";
 import LeafletMap from "@/components/LeafletMap";
+import { toast } from "../../../src/store/toastStore";
 
 export default function RequestDetailsScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -45,7 +46,7 @@ export default function RequestDetailsScreen() {
             setRequest(data);
           } catch (error) {
             console.error("Failed to load request:", error);
-            Alert.alert("Error", "Failed to load request details");
+            toast.error("Error", "Failed to load request details");
           } finally {
             setLoading(false);
           }
@@ -73,15 +74,10 @@ export default function RequestDetailsScreen() {
             setIsCancelling(true);
             try {
               await cancelRequest(id);
-              Alert.alert("Success", "Request cancelled successfully", [
-                {
-                  text: "OK",
-                  onPress: () =>
-                    router.replace("/(tabs)/explore?tab=myrequests"),
-                },
-              ]);
+              toast.success("Request Cancelled", "Request cancelled successfully");
+              router.replace("/(tabs)/explore?tab=myrequests");
             } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to cancel request");
+              toast.error("Error", error.message || "Failed to cancel request");
             } finally {
               setIsCancelling(false);
             }
@@ -426,18 +422,8 @@ export default function RequestDetailsScreen() {
             style={styles.offerRideButton}
             onPress={() =>
               router.push({
-                pathname: "/(tabs)/rides/create",
-                params: {
-                  prefillAirportId:
-                    typeof request.airport === "object"
-                      ? request.airport._id
-                      : request.airport,
-                  prefillDirection:
-                    request.direction === "to_airport"
-                      ? "home_to_airport"
-                      : "airport_to_home",
-                  prefillDate: request.preferred_datetime?.split("T")[0] || "",
-                },
+                pathname: "/request-details/[id]",
+                params: { id },
               })
             }
           >

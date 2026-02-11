@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +21,7 @@ import { useAirportStore } from "@/store/airportStore";
 import { useRideStore } from "@/store/rideStore";
 import MapLocationPicker from "@/components/MapLocationPicker";
 import LeafletMap from "@/components/LeafletMap";
+import { toast } from "../../../src/store/toastStore";
 
 export default function CreateRequestScreen() {
   const router = useRouter();
@@ -62,6 +62,21 @@ export default function CreateRequestScreen() {
   const [maxPrice, setMaxPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [hasPrefilled, setHasPrefilled] = useState(false);
+  const airportMapSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle Airport Map Region Change - refetch airports for current view
+  const handleAirportMapRegionChange = (region: { latitude: number; longitude: number }) => {
+    if (airportMapSearchTimeoutRef.current) {
+      clearTimeout(airportMapSearchTimeoutRef.current);
+    }
+    airportMapSearchTimeoutRef.current = setTimeout(() => {
+      fetchAirports({
+        latitude: region.latitude,
+        longitude: region.longitude,
+        radius: 200000, // 200km radius
+      });
+    }, 500);
+  };
 
   useEffect(() => {
     fetchAirports();
@@ -118,11 +133,11 @@ export default function CreateRequestScreen() {
 
   const handleSubmit = async () => {
     if (!airportId) {
-      Alert.alert("Error", "Please select an airport");
+      toast.warning("Missing Airport", "Please select an airport");
       return;
     }
     if (!location) {
-      Alert.alert("Error", "Please select your pickup/dropoff location");
+      toast.warning("Missing Location", "Please select your pickup/dropoff location");
       return;
     }
 
@@ -162,12 +177,12 @@ export default function CreateRequestScreen() {
       if (matchingRides && matchingRides.length > 0) {
         // Found matching rides - show notification with option to view them
         // Pass all the search criteria so results page can use them
-        Alert.alert(
+        toast.success(
           "🎉 Good News!",
           `Your request has been posted! We found ${matchingRides.length} ride${matchingRides.length > 1 ? 's' : ''} that match your criteria. Would you like to view them?`,
           [
             { 
-              text: "View Rides", 
+              label: "View Rides", 
               onPress: () => router.replace({
                 pathname: "/(tabs)/rides/results",
                 params: {
@@ -181,25 +196,24 @@ export default function CreateRequestScreen() {
                   date: searchDate,
                   includeTime: "false",
                   seatsMin: seatsNeeded,
-                  fromRequest: "true", // Flag to indicate coming from request creation
+                  fromRequest: "true",
                 }
               })
             },
             { 
-              text: "Later", 
-              style: "cancel",
+              label: "Later", 
               onPress: () => router.replace("/(tabs)") 
             }
           ]
         );
       } else {
         // No matching rides found
-        Alert.alert(
+        toast.success(
           "Request Posted!",
           "Your ride request has been posted. We'll notify you when drivers are available. Would you like to see available rides?",
           [
             { 
-              text: "View Available Rides", 
+              label: "View Available Rides", 
               onPress: () => router.replace({
                 pathname: "/(tabs)/rides/search",
                 params: {
@@ -209,20 +223,19 @@ export default function CreateRequestScreen() {
                   prefillLocationAddress: location.address,
                   prefillLocationLat: String(location.latitude),
                   prefillLocationLng: String(location.longitude),
-                  autoSearch: "true", // Auto-search and show results directly
+                  autoSearch: "true",
                 }
               })
             },
             { 
-              text: "OK", 
-              style: "cancel",
+              label: "OK", 
               onPress: () => router.replace("/(tabs)") 
             }
           ]
         );
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message);
+      toast.error("Error", err.message);
     }
   };
 
@@ -339,6 +352,10 @@ export default function CreateRequestScreen() {
           animationType="slide"
           transparent={true}
         >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+          >
           <View style={styles.modalOverlay}>
             <View style={styles.airportModalContent}>
               <View style={styles.airportModalHeader}>
@@ -380,6 +397,9 @@ export default function CreateRequestScreen() {
                 keyExtractor={(item, index) =>
                   item._id || item.id || String(index)
                 }
+                initialNumToRender={20}
+                maxToRenderPerBatch={30}
+                windowSize={10}
                 renderItem={({ item: airport }) => (
                   <TouchableOpacity
                     style={[
@@ -424,6 +444,7 @@ export default function CreateRequestScreen() {
               />
             </View>
           </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Airport Map Modal */}
@@ -442,13 +463,14 @@ export default function CreateRequestScreen() {
             <LeafletMap
               mode="view"
               initialRegion={{ latitude: 48.8566, longitude: 2.3522, zoom: 5 }}
-              markers={airports.map(a => ({
+              markers={airports.filter(a => a.latitude != null && a.longitude != null).map(a => ({
                 id: a._id || a.id,
-                latitude: a.latitude,
-                longitude: a.longitude,
+                latitude: a.latitude!,
+                longitude: a.longitude!,
                 title: `${a.iata_code} - ${a.name}`,
-                type: 'airport'
+                type: 'airport' as const
               }))}
+              selectedId={airportId}
               onMarkerClick={(id) => {
                 setAirportId(id);
                 setShowAirportMap(false);

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../../../src/store/authStore";
 import { api } from "../../../src/lib/api";
+import { toast } from "../../../src/store/toastStore";
 
 export default function ChangeEmailScreen() {
   const router = useRouter();
@@ -42,17 +42,17 @@ export default function ChangeEmailScreen() {
 
   const sendOtp = async () => {
     if (!newEmail.trim()) {
-      Alert.alert("Error", "Please enter your new email address");
+      toast.warning("Missing Email", "Please enter your new email address");
       return;
     }
 
     if (!validateEmail(newEmail.trim())) {
-      Alert.alert("Error", "Please enter a valid email address");
+      toast.warning("Invalid Email", "Please enter a valid email address");
       return;
     }
 
     if (newEmail.toLowerCase().trim() === user?.email?.toLowerCase()) {
-      Alert.alert("Error", "New email must be different from your current email");
+      toast.warning("Same Email", "New email must be different from your current email");
       return;
     }
 
@@ -61,13 +61,10 @@ export default function ChangeEmailScreen() {
       await api.post("/auth/send-email-otp", { email: newEmail.trim() });
       setStep("otp");
       setResendSeconds(60);
-      Alert.alert("OTP Sent", "A verification code has been sent to your new email address.");
+      toast.info("OTP Sent", "A verification code has been sent to your new email address.");
       setTimeout(() => otpInputRef.current?.focus(), 100);
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.response?.data?.message || "Failed to send verification code"
-      );
+      toast.error("Error", error.response?.data?.message || "Failed to send verification code");
     } finally {
       setLoading(false);
     }
@@ -75,7 +72,7 @@ export default function ChangeEmailScreen() {
 
   const verifyAndChangeEmail = async () => {
     if (!otp.trim() || otp.length !== 6) {
-      Alert.alert("Error", "Please enter the 6-digit verification code");
+      toast.warning("Missing Code", "Please enter the 6-digit verification code");
       return;
     }
 
@@ -93,14 +90,10 @@ export default function ChangeEmailScreen() {
       });
 
       await refreshUser();
-      Alert.alert("Success", "Your email has been updated successfully!", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      toast.success("Email Updated", "Your email has been updated successfully!");
+      router.back();
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.response?.data?.message || "Failed to change email"
-      );
+      toast.error("Error", error.response?.data?.message || "Failed to change email");
     } finally {
       setLoading(false);
     }

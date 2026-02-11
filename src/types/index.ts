@@ -53,6 +53,8 @@ export interface Ride {
   seats_total?: number;
   available_seats?: number;
   seats_left?: number;
+  luggage_capacity?: number;
+  luggage_left?: number;
   price_per_seat: number;
   status: "active" | "completed" | "cancelled";
   comment?: string; // Found in usage
@@ -72,6 +74,7 @@ export interface Booking {
   passenger_name?: string;
   seats?: number;
   seats_booked?: number;
+  luggage_count?: number;
   total_price: number;
   status: "pending" | "accepted" | "rejected" | "cancelled";
   pickup_location?: {

@@ -7,6 +7,7 @@ export default function RidesLayout() {
       <Stack.Screen name="edit" />
       <Stack.Screen name="my-rides" />
       <Stack.Screen name="search" />
+      <Stack.Screen name="results" />
       <Stack.Screen name="[id]" />
     </Stack>
   );

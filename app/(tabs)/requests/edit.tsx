@@ -6,7 +6,6 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +21,7 @@ import { useAirportStore } from "../../../src/store/airportStore";
 import MapLocationPicker from "../../../src/components/MapLocationPicker";
 import LeafletMap from "../../../src/components/LeafletMap"; // New import
 import { RideRequest } from "../../../src/types";
+import { toast } from "../../../src/store/toastStore";
 
 export default function EditRequestScreen() {
   const router = useRouter();
@@ -69,7 +69,7 @@ export default function EditRequestScreen() {
           setRequest(data);
         } catch (error: any) {
           console.error("Failed to load request:", error);
-          Alert.alert("Error", "Failed to load request details");
+          toast.error("Error", "Failed to load request details");
           router.back();
         }
       }
@@ -133,11 +133,11 @@ export default function EditRequestScreen() {
 
   const handleSubmit = async () => {
     if (!airportId) {
-      Alert.alert("Error", "Please select an airport");
+      toast.warning("Missing Airport", "Please select an airport");
       return;
     }
     if (!location) {
-      Alert.alert("Error", "Please select your pickup/dropoff location");
+      toast.warning("Missing Location", "Please select your pickup/dropoff location");
       return;
     }
 
@@ -158,11 +158,10 @@ export default function EditRequestScreen() {
         notes: notes || undefined,
       });
 
-      Alert.alert("Success", "Request updated successfully", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=myrequests") }
-      ]);
+      toast.success("Request Updated", "Your request has been updated successfully");
+      router.replace("/(tabs)/explore?tab=myrequests");
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to update request");
+      toast.error("Error", err.message || "Failed to update request");
     }
   };
 
@@ -283,6 +282,10 @@ export default function EditRequestScreen() {
           animationType="slide"
           transparent={true}
         >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+          >
           <View style={styles.modalOverlay}>
             <View style={styles.airportModalContent}>
               <View style={styles.airportModalHeader}>
@@ -367,6 +370,7 @@ export default function EditRequestScreen() {
               />
             </View>
           </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Airport Map Modal */}

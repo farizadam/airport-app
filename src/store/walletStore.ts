@@ -137,7 +137,7 @@ interface WalletState {
   requestWithdrawal: (amount: number) => Promise<{ success: boolean; message: string }>;
   connectBankAccount: () => Promise<{ url: string } | null>;
   calculateEarnings: (pricePerSeat: number, seats: number) => Promise<EarningsCalculation | null>;
-  payWithWallet: (rideId: string, seats: number) => Promise<{ success: boolean; message: string; booking?: any; newBalance?: number }>;
+  payWithWallet: (rideId: string, seats: number, luggage_count?: number) => Promise<{ success: boolean; message: string; booking?: any; newBalance?: number }>;
   clearError: () => void;
 }
 
@@ -362,7 +362,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     }
   },
 
-  payWithWallet: async (rideId: string, seats: number) => {
+  payWithWallet: async (rideId: string, seats: number, luggage_count?: number) => {
     try {
       set({ isPaying: true, error: null });
 
@@ -378,7 +378,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
           new_balance_display: string;
           fees_saved: string;
         };
-      }>("/payments/wallet", { rideId, seats });
+      }>("/payments/wallet", { rideId, seats, luggage_count: luggage_count || 0 });
 
       // Update wallet balance in local state
       const wallet = get().wallet;

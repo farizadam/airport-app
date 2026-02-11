@@ -26,6 +26,9 @@ export interface TripItem {
   seats?: number;
   seats_left?: number;
   totalSeats?: number;
+  luggage_capacity?: number;
+  luggage_left?: number;
+  luggage_count?: number;
   price?: number;
   direction?: TripDirection;
   driver?: {
@@ -143,7 +146,7 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
            if (item.rideId) {
              router.push({ pathname: "/ride-details/[id]", params: { id: item.rideId } }); 
            } else {
-             router.push("/(tabs)/bookings");
+             router.push("/(tabs)/explore");
            }
         } else if (item.type === "offer") {
           // Navigate to the request details for offers
@@ -383,10 +386,24 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
                <Text style={styles.tripSeatsText}>{seatsDisplay}</Text>
              </View>
            )}
+           {(item.luggage_capacity !== undefined && item.luggage_capacity > 0) && (
+             <View style={[styles.tripSeats, { marginLeft: 8 }]}>
+               <Ionicons name="briefcase-outline" size={14} color="#64748B" />
+               <Text style={styles.tripSeatsText}>
+                 {item.luggage_left !== undefined ? `${item.luggage_left}/${item.luggage_capacity}` : item.luggage_capacity}
+               </Text>
+             </View>
+           )}
+           {(item.luggage_count !== undefined && item.luggage_count > 0 && !item.luggage_capacity) && (
+             <View style={[styles.tripSeats, { marginLeft: 8 }]}>
+               <Ionicons name="briefcase-outline" size={14} color="#64748B" />
+               <Text style={styles.tripSeatsText}>{item.luggage_count} bag(s)</Text>
+             </View>
+           )}
         </View>
 
-        {/* Cancel Button (Only if showCancelButton is true) */}
-        {showCancelButton && onCancel && (
+        {/* Cancel Button (Only for drivers — passengers cannot cancel from card) */}
+        {showCancelButton && onCancel && item.role !== "passenger" && (
           <TouchableOpacity 
             style={styles.cardCancelButton}
             onPress={() => onCancel(item)}

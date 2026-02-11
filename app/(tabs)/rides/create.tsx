@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Modal,
   FlatList,
@@ -24,6 +23,7 @@ import MapLocationPicker from "../../../src/components/MapLocationPicker";
 import RideMap from "@/components/RideMap";
 import LeafletMap from "@/components/LeafletMap";
 import { Airport } from "../../../src/types";
+import { toast } from "../../../src/store/toastStore";
 
 export default function CreateRideScreen() {
   const router = useRouter();
@@ -57,6 +57,7 @@ export default function CreateRideScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [totalSeats, setTotalSeats] = useState(3);
+  const [luggageCapacity, setLuggageCapacity] = useState(2);
   const [pricePerSeat, setPricePerSeat] = useState("");
   const [driverComment, setDriverComment] = useState("");
   const [hasPrefilled, setHasPrefilled] = useState(false);
@@ -64,6 +65,21 @@ export default function CreateRideScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [showRoutePreviewFull, setShowRoutePreviewFull] = useState(false);
+  const airportMapSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle Airport Map Region Change - refetch airports for current view
+  const handleAirportMapRegionChange = (region: { latitude: number; longitude: number }) => {
+    if (airportMapSearchTimeoutRef.current) {
+      clearTimeout(airportMapSearchTimeoutRef.current);
+    }
+    airportMapSearchTimeoutRef.current = setTimeout(() => {
+      fetchAirports({
+        latitude: region.latitude,
+        longitude: region.longitude,
+        radius: 200000, // 200km radius
+      });
+    }, 500);
+  };
 
   useEffect(() => {
     fetchAirports();
@@ -147,15 +163,15 @@ export default function CreateRideScreen() {
 
   const handleSubmit = async () => {
     if (!airportId) {
-      Alert.alert("Error", "Please select an airport");
+      toast.warning("Missing Airport", "Please select an airport");
       return;
     }
     if (!location) {
-      Alert.alert("Error", "Please select your pickup/dropoff location");
+      toast.warning("Missing Location", "Please select your pickup/dropoff location");
       return;
     }
     if (!pricePerSeat) {
-      Alert.alert("Error", "Please enter a price per seat");
+      toast.warning("Missing Price", "Please enter a price per seat");
       return;
     }
 
@@ -174,6 +190,7 @@ export default function CreateRideScreen() {
         departure_datetime: departureDateTime.toISOString(),
         total_seats: totalSeats,
         price_per_seat: parseFloat(pricePerSeat),
+        luggage_capacity: luggageCapacity,
         driver_comment: driverComment.trim() || undefined,
       });
 
@@ -204,12 +221,12 @@ export default function CreateRideScreen() {
       
       if (matchingRequests && matchingRequests.length > 0) {
         // Found matching requests - show notification with option to view them
-        Alert.alert(
+        toast.success(
           "🎉 Ride Created!",
-          `Your ride has been posted! We found ${matchingRequests.length} passenger${matchingRequests.length > 1 ? 's' : ''} looking for rides that match your route. Would you like to view their requests?`,
+          `Your ride has been posted! We found ${matchingRequests.length} passenger${matchingRequests.length > 1 ? 's' : ''} looking for rides that match your route.`,
           [
-            { 
-              text: "View Requests", 
+            {
+              label: "View Requests",
               onPress: () => router.replace({
                 pathname: "/(tabs)/requests/available",
                 params: {
@@ -226,21 +243,20 @@ export default function CreateRideScreen() {
                 }
               })
             },
-            { 
-              text: "Later", 
-              style: "cancel",
-              onPress: () => router.replace("/(tabs)") 
+            {
+              label: "Later",
+              onPress: () => router.replace("/(tabs)")
             }
           ]
         );
       } else {
         // No matching requests found
-        Alert.alert(
+        toast.success(
           "Ride Created!",
           "Your ride has been posted successfully. Would you like to see available passenger requests?",
           [
-            { 
-              text: "View Requests", 
+            {
+              label: "View Requests",
               onPress: () => router.replace({
                 pathname: "/(tabs)/requests/available",
                 params: {
@@ -257,16 +273,15 @@ export default function CreateRideScreen() {
                 }
               })
             },
-            { 
-              text: "OK", 
-              style: "cancel",
-              onPress: () => router.replace("/(tabs)") 
+            {
+              label: "Home",
+              onPress: () => router.replace("/(tabs)")
             }
           ]
         );
       }
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to create ride");
+      toast.error("Error", error.message || "Failed to create ride");
     }
   };
 
@@ -385,6 +400,10 @@ export default function CreateRideScreen() {
           transparent={true}
           onRequestClose={() => setShowAirportDropdown(false)}
         >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+          >
           <View style={styles.modalOverlay}>
             <View style={styles.airportModalContent}>
               <View style={styles.airportModalHeader}>
@@ -407,6 +426,9 @@ export default function CreateRideScreen() {
               <FlatList
                 data={filteredAirports}
                 keyExtractor={(item) => item._id || item.id}
+                initialNumToRender={20}
+                maxToRenderPerBatch={30}
+                windowSize={10}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={[
@@ -436,6 +458,7 @@ export default function CreateRideScreen() {
               />
             </View>
           </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Airport Map Modal */}
@@ -458,14 +481,14 @@ export default function CreateRideScreen() {
                   ? { latitude: selectedAirport.latitude, longitude: selectedAirport.longitude, zoom: 10 }
                   : { latitude: 48.8566, longitude: 2.3522, zoom: 5 }
               }
-              markers={airports.map(a => ({
+              markers={airports.filter(a => a.latitude != null && a.longitude != null).map(a => ({
                 id: a._id || a.id,
-                latitude: a.latitude,
-                longitude: a.longitude,
+                latitude: a.latitude!,
+                longitude: a.longitude!,
                 title: `${a.iata_code} - ${a.name}`,
-                type: 'airport'
+                type: 'airport' as const
               }))}
-              selectedId={airportId} // Pass selected airport ID
+              selectedId={airportId}
               onMarkerClick={(id) => {
                 setAirportId(id);
                 setShowAirportMap(false);
@@ -616,6 +639,27 @@ export default function CreateRideScreen() {
             onPress={() => setTotalSeats(Math.min(7, totalSeats + 1))}
           >
             <Ionicons name="add-circle-outline" size={28} color={totalSeats < 7 ? "#007AFF" : "#ccc"} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Luggage Capacity */}
+        <Text style={styles.label}>Luggage Capacity</Text>
+        <View style={styles.counterRow}>
+          <TouchableOpacity
+            style={styles.counterButton}
+            onPress={() => setLuggageCapacity(Math.max(0, luggageCapacity - 1))}
+          >
+            <Ionicons name="remove-circle-outline" size={28} color={luggageCapacity > 0 ? "#007AFF" : "#ccc"} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={styles.counterValue}>{luggageCapacity}</Text>
+            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>suitcase(s)</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.counterButton}
+            onPress={() => setLuggageCapacity(Math.min(10, luggageCapacity + 1))}
+          >
+            <Ionicons name="add-circle-outline" size={28} color={luggageCapacity < 10 ? "#007AFF" : "#ccc"} />
           </TouchableOpacity>
         </View>
 

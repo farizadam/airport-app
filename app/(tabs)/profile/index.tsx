@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,6 +22,7 @@ import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useAuthStore } from "../../../src/store/authStore";
 import { api } from "../../../src/lib/api";
+import { toast } from "../../../src/store/toastStore";
 
 const AVAILABLE_LANGUAGES = [
   "English", "French", "Arabic", "Spanish", "German", 
@@ -94,7 +96,7 @@ export default function ProfileScreen() {
               await logout();
               router.replace("/login");
             } catch (error) {
-              Alert.alert('Error', "Failed to delete account");
+              toast.error("Error", "Failed to delete account");
             }
           },
         },
@@ -117,9 +119,9 @@ export default function ProfileScreen() {
       await api.put("/users/me", updateData);
       await refreshUser();
       setEditModalVisible(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      toast.success("Profile Updated", "Profile updated successfully");
     } catch (error) {
-      Alert.alert('Error', "Failed to update profile");
+      toast.error("Error", "Failed to update profile");
     } finally {
       setLoading(false);
     }
@@ -139,10 +141,7 @@ export default function ProfileScreen() {
     setAvatarModalVisible(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission Required",
-        "Please grant access to your photo library to upload a profile picture."
-      );
+      toast.warning("Permission Required", "Please grant access to your photo library to upload a profile picture.");
       return;
     }
 
@@ -172,10 +171,7 @@ export default function ProfileScreen() {
     setAvatarModalVisible(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission Required",
-        "Please grant access to your camera to take a profile picture."
-      );
+      toast.warning("Permission Required", "Please grant access to your camera to take a profile picture.");
       return;
     }
 
@@ -215,10 +211,10 @@ export default function ProfileScreen() {
       });
       await refreshUser();
       setPreviewImage(null);
-      Alert.alert("Success", "Profile picture updated!");
+      toast.success("Photo Updated", "Profile picture updated!");
     } catch (error: any) {
       console.error("Avatar upload error:", error.response?.data || error.message);
-      Alert.alert("Error", error.response?.data?.message || "Failed to upload profile picture. Try a smaller image.");
+      toast.error("Upload Failed", error.response?.data?.message || "Failed to upload profile picture. Try a smaller image.");
     } finally {
       setUploadingAvatar(false);
     }
@@ -239,9 +235,9 @@ export default function ProfileScreen() {
             try {
               await api.delete("/users/me/avatar");
               await refreshUser();
-              Alert.alert("Success", "Profile picture removed");
+              toast.success("Photo Removed", "Profile picture removed");
             } catch (error) {
-              Alert.alert("Error", "Failed to remove profile picture");
+              toast.error("Error", "Failed to remove profile picture");
             } finally {
               setLoading(false);
             }
@@ -307,14 +303,17 @@ export default function ProfileScreen() {
   const getProfileCompletion = () => {
     if (!user) return 0;
     let completed = 0;
-    const total = 6;
+    const total = 9;
     
-    if (user.first_name && user.last_name) completed++;
+    if (user.first_name) completed++;
+    if (user.last_name) completed++;
     if (user.email) completed++;
     if (user.phone) completed++;
-    if (user.avatar_url) completed++;
     if (user.date_of_birth) completed++;
-    if (user.email_verified || user.phone_verified) completed++;
+    if (user.bio) completed++;
+    if (user.languages && user.languages.length > 0) completed++;
+    if (user.car_model) completed++;
+    if (user.car_color) completed++;
     
     return Math.round((completed / total) * 100);
   };
@@ -338,7 +337,10 @@ export default function ProfileScreen() {
   }
 
   const age = calculateAge(user.date_of_birth);
-  const profileCompletion = getProfileCompletion();
+  const profileCompletion = useMemo(() => getProfileCompletion(), [
+    user?.first_name, user?.last_name, user?.email, user?.phone, user?.date_of_birth,
+    user?.bio, user?.languages, user?.car_model, user?.car_color
+  ]);
   const verificationStatus = getVerificationStatus();
 
   return (
@@ -415,7 +417,7 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         {/* Profile Completion Card */}
-        {profileCompletion < 100 && (
+        {profileCompletion < 100 ? (
           <View style={styles.completionCard}>
             <View style={styles.completionHeader}>
               <Ionicons name="shield-checkmark" size={24} color="#F59E0B" />
@@ -431,6 +433,21 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.progressBarBg}>
               <View style={[styles.progressBarFill, { width: `${profileCompletion}%` }]} />
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.completionCard, { borderColor: '#DCFCE7', borderWidth: 1 }]}>
+            <View style={styles.completionHeader}>
+              <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
+              <View style={styles.completionInfo}>
+                <Text style={styles.completionTitle}>Profile Complete</Text>
+                <Text style={[styles.completionSubtitle, { color: '#16A34A' }]}>
+                  100% complete
+                </Text>
+              </View>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: '100%', backgroundColor: '#16A34A' }]} />
             </View>
           </View>
         )}
@@ -589,7 +606,7 @@ export default function ProfileScreen() {
 
             <View style={styles.settingDivider} />
 
-            <TouchableOpacity style={styles.settingRow}>
+            <TouchableOpacity style={styles.settingRow} onPress={() => router.push("/(tabs)/profile/privacy-policy")}>
               <View style={styles.settingInfo}>
                 <View style={[styles.settingIcon, { backgroundColor: "#FEF3C7" }]}>
                   <Ionicons name="shield-outline" size={20} color="#F59E0B" />
@@ -601,7 +618,7 @@ export default function ProfileScreen() {
 
             <View style={styles.settingDivider} />
 
-            <TouchableOpacity style={styles.settingRow}>
+            <TouchableOpacity style={styles.settingRow} onPress={() => router.push("/(tabs)/profile/terms-of-service")}>
               <View style={styles.settingInfo}>
                 <View style={[styles.settingIcon, { backgroundColor: "#F1F5F9" }]}>
                   <Ionicons name="document-text-outline" size={20} color="#64748B" />
@@ -627,17 +644,6 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-forward" size={20} color="#FCA5A5" />
             </TouchableOpacity>
 
-            <View style={styles.settingDivider} />
-
-            <TouchableOpacity style={styles.accountRow} onPress={handleDeleteAccount}>
-              <View style={styles.settingInfo}>
-                <View style={[styles.settingIcon, { backgroundColor: "#FEF2F2" }]}>
-                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                </View>
-                <Text style={[styles.settingLabel, { color: "#EF4444" }]}>Delete Account</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#FCA5A5" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -655,6 +661,10 @@ export default function ProfileScreen() {
         visible={editModalVisible}
         onRequestClose={() => setEditModalVisible(false)}
       >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -788,6 +798,7 @@ export default function ProfileScreen() {
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Avatar Selection Modal */}

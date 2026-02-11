@@ -3,13 +3,13 @@ import { useRequestStore } from "@/store/requestStore";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import RideMap from "@/components/RideMap";
 import ProfileAvatar from "@/components/ProfileAvatar";
+import { toast } from "../../../src/store/toastStore";
 
 interface SearchResult {
   id: string;
@@ -34,6 +35,9 @@ interface SearchResult {
   dropoffCoords?: { latitude: number; longitude: number };
   departureTime: string;
   availableSeats?: number;
+  luggageCapacity?: number;
+  luggagLeft?: number;
+  luggageCount?: number;
   passengers?: number;
   pricePerSeat?: number;
   matchType: "exact" | "partial" | "nearby";
@@ -75,6 +79,20 @@ export default function SearchResultsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "rides" | "requests">("all");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterMinSeats, setFilterMinSeats] = useState("");
+  const [filterMinLuggage, setFilterMinLuggage] = useState("");
+  const [filterMaxPrice, setFilterMaxPrice] = useState("");
+
+  const hasActiveFilters = filterMinSeats !== "" || filterMinLuggage !== "" || filterMaxPrice !== "";
+
+  const clearFilters = () => {
+    setFilterMinSeats("");
+    setFilterMinLuggage("");
+    setFilterMaxPrice("");
+  };
 
   const isToAirport = params.direction === "to_airport";
   const themeColor = isToAirport ? "#3B82F6" : "#8B5CF6";
@@ -137,7 +155,7 @@ export default function SearchResultsScreen() {
 
   const handleSubmitOffer = async () => {
     if (!offerPrice || parseFloat(offerPrice) <= 0) {
-      Alert.alert("Error", "Please enter a valid price per seat");
+      toast.warning("Invalid Price", "Please enter a valid price per seat");
       return;
     }
 
@@ -148,15 +166,12 @@ export default function SearchResultsScreen() {
       await makeOffer(selectedRequest.id, {
         price_per_seat: parseFloat(offerPrice),
       });
-      Alert.alert("Success", "Your offer has been sent to the passenger!", [
-        { text: "OK", onPress: () => {
-          setOfferModalVisible(false);
-          setSelectedRequest(null);
-          router.replace("/(tabs)/explore?tab=myoffers");
-        }}
-      ]);
+      toast.success("Offer Sent!", "Your offer has been sent to the passenger!");
+      setOfferModalVisible(false);
+      setSelectedRequest(null);
+      router.replace("/(tabs)/explore?tab=myoffers");
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to send offer");
+      toast.error("Error", err.message || "Failed to send offer");
     } finally {
       setSubmittingOffer(false);
     }
@@ -250,6 +265,8 @@ export default function SearchResultsScreen() {
           dropoffLocation: isToAirport ? (ride.airport?.name || params.airportName || "Airport") : (ride.home_address || ride.home_city || "Unknown"),
           departureTime: ride.departure_datetime || ride.datetime_start,
           availableSeats: availableSeats,
+          luggageCapacity: ride.luggage_capacity,
+          luggagLeft: ride.luggage_left,
           pricePerSeat: ride.price_per_seat,
           matchType: isIntermediate ? "partial" : "exact",
           distance: isIntermediate ? Math.floor(distanceFromSearch) : (Math.floor(Math.random() * 5)), // Mock distance if not intermediate
@@ -298,6 +315,7 @@ export default function SearchResultsScreen() {
           dropoffLocation: isToAirport ? (request.airport?.name || params.airportName || "Airport") : (request.location_address || request.location_city || "Unknown"),
           departureTime: request.preferred_datetime,
           passengers: request.seats_needed,
+          luggageCount: request.luggage_count,
           matchType: "exact",
           distance: Math.floor(Math.random() * 15) + 1,
           pickupCoords: { latitude: pickupLat, longitude: pickupLng },
@@ -312,12 +330,41 @@ export default function SearchResultsScreen() {
     setResults(mockResults);
   };
 
-  const filteredResults = results.filter((result) => {
-    if (activeTab === "all") return true;
-    if (activeTab === "rides") return result.type === "ride";
-    if (activeTab === "requests") return result.type === "request";
-    return true;
-  });
+  const filteredResults = useMemo(() => {
+    return results.filter((result) => {
+      // Tab filter
+      if (activeTab === "rides" && result.type !== "ride") return false;
+      if (activeTab === "requests" && result.type !== "request") return false;
+
+      // Optional seats filter
+      if (filterMinSeats !== "") {
+        const minSeats = parseInt(filterMinSeats);
+        if (!isNaN(minSeats) && minSeats > 0) {
+          if (result.type === "ride" && (result.availableSeats || 0) < minSeats) return false;
+          if (result.type === "request" && (result.passengers || 0) < minSeats) return false;
+        }
+      }
+
+      // Optional luggage filter
+      if (filterMinLuggage !== "") {
+        const minLuggage = parseInt(filterMinLuggage);
+        if (!isNaN(minLuggage) && minLuggage > 0) {
+          if (result.type === "ride" && (result.luggagLeft ?? result.luggageCapacity ?? 0) < minLuggage) return false;
+          if (result.type === "request" && (result.luggageCount ?? 0) < minLuggage) return false;
+        }
+      }
+
+      // Optional max price filter (only applies to rides)
+      if (filterMaxPrice !== "") {
+        const maxPrice = parseFloat(filterMaxPrice);
+        if (!isNaN(maxPrice) && maxPrice > 0) {
+          if (result.type === "ride" && (result.pricePerSeat || 0) > maxPrice) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [results, activeTab, filterMinSeats, filterMinLuggage, filterMaxPrice]);
 
   const getMatchBadgeColor = (matchType: string) => {
     switch (matchType) {
@@ -460,6 +507,18 @@ export default function SearchResultsScreen() {
               {isRide ? `${item.availableSeats} seats` : `${item.passengers} passengers`}
             </Text>
           </View>
+          {isRide && (item.luggageCapacity ?? 0) > 0 && (
+            <View style={[styles.seatsContainer, { marginLeft: 10 }]}>
+              <Ionicons name="briefcase-outline" size={16} color="#64748B" />
+              <Text style={styles.seatsText}>{item.luggagLeft ?? item.luggageCapacity} bags</Text>
+            </View>
+          )}
+          {!isRide && (item.luggageCount ?? 0) > 0 && (
+            <View style={[styles.seatsContainer, { marginLeft: 10 }]}>
+              <Ionicons name="briefcase-outline" size={16} color="#64748B" />
+              <Text style={styles.seatsText}>{item.luggageCount} bag(s)</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -479,7 +538,7 @@ export default function SearchResultsScreen() {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Search Results</Text>
+          <Text style={styles.headerTitle}>Search Results 🔍</Text>
           <Text style={styles.headerSubtitle}>
             {params.airportCode} • {new Date(params.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
           </Text>
@@ -490,9 +549,6 @@ export default function SearchResultsScreen() {
                 onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
             >
             <Ionicons name={viewMode === 'list' ? "map-outline" : "list-outline"} size={24} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={() => {/* Filter */}}>
-            <Ionicons name="options-outline" size={24} color="#fff" />
             </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -530,12 +586,68 @@ export default function SearchResultsScreen() {
                 )}
             </View>
 
+            {/* Results count */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#475569' }}>
+                {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''} found
+                {hasActiveFilters ? ` (of ${results.length})` : ''}
+              </Text>
+              {hasActiveFilters && (
+                <TouchableOpacity onPress={clearFilters}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: themeColor }}>Clear filters</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Always-visible filter bar */}
+            <View style={{ backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                <View style={{ minWidth: 90 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginBottom: 4 }}>Min Seats</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: filterMinSeats ? themeColor : '#E2E8F0', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14, color: '#1E293B', textAlign: 'center', fontWeight: '600' }}
+                    value={filterMinSeats}
+                    onChangeText={setFilterMinSeats}
+                    keyboardType="number-pad"
+                    placeholder="Any"
+                    placeholderTextColor="#9CA3AF"
+                    maxLength={2}
+                  />
+                </View>
+                <View style={{ minWidth: 90 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginBottom: 4 }}>Min Luggage</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: filterMinLuggage ? themeColor : '#E2E8F0', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14, color: '#1E293B', textAlign: 'center', fontWeight: '600' }}
+                    value={filterMinLuggage}
+                    onChangeText={setFilterMinLuggage}
+                    keyboardType="number-pad"
+                    placeholder="Any"
+                    placeholderTextColor="#9CA3AF"
+                    maxLength={2}
+                  />
+                </View>
+                <View style={{ minWidth: 90 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginBottom: 4 }}>Max Price €</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: filterMaxPrice ? themeColor : '#E2E8F0', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14, color: '#1E293B', textAlign: 'center', fontWeight: '600' }}
+                    value={filterMaxPrice}
+                    onChangeText={setFilterMaxPrice}
+                    keyboardType="number-pad"
+                    placeholder="Any"
+                    placeholderTextColor="#9CA3AF"
+                    maxLength={4}
+                  />
+                </View>
+              </ScrollView>
+            </View>
+
+            {/* All / Offers / Requests tabs */}
             <View style={styles.tabsContainer}>
                 <TouchableOpacity style={[styles.tab, activeTab === "all" && { backgroundColor: themeColor }]} onPress={() => setActiveTab("all")}>
-                <Text style={[styles.tabText, activeTab === "all" && styles.tabTextActive]}>All ({results.length})</Text>
+                <Text style={[styles.tabText, activeTab === "all" && styles.tabTextActive]}>All ({filteredResults.length})</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.tab, activeTab === "rides" && { backgroundColor: themeColor }]} onPress={() => setActiveTab("rides")}>
-                <Text style={[styles.tabText, activeTab === "rides" && styles.tabTextActive]}>Rides ({results.filter(r => r.type === "ride").length})</Text>
+                <Text style={[styles.tabText, activeTab === "rides" && styles.tabTextActive]}>Offers ({results.filter(r => r.type === "ride").length})</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.tab, activeTab === "requests" && { backgroundColor: themeColor }]} onPress={() => setActiveTab("requests")}>
                 <Text style={[styles.tabText, activeTab === "requests" && styles.tabTextActive]}>Requests ({results.filter(r => r.type === "request").length})</Text>
@@ -1012,5 +1124,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#fff",
+  },
+  // Filter styles
+  filterBadgeDot: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FCD34D",
+  },
+  filterPanel: {
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  filterHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  filterTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  filterClearText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  filterRow: {
+    flexDirection: "row",
+    gap: 12,
+    paddingRight: 16,
+  },
+  filterItem: {
+    minWidth: 100,
+  },
+  filterLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 6,
+  },
+  filterLabel: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  filterInput: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: "#1E293B",
+    textAlign: "center",
+    fontWeight: "600",
+    minWidth: 80,
+  },
+  filterResultCount: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginTop: 8,
+    textAlign: "center",
   },
 });

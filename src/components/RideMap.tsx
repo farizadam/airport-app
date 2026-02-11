@@ -17,7 +17,7 @@ interface LocationData {
 
 interface RideItem {
   _id: string;
-  type: 'ride' | 'request';
+  type: 'ride' | 'request' | 'airport';
   pickup_location: LocationData;
   dropoff_location: LocationData;
   price_per_seat?: number;
@@ -105,7 +105,7 @@ export default function RideMap({ items = [], routeCoordinates, initialRegion, o
     id: item._id,
     latitude: item.pickup_location.latitude,
     longitude: item.pickup_location.longitude,
-    type: item.type,
+    type: item.type as 'ride' | 'request' | 'airport',
     title: item.pickup_location.city || 'Ride'
   }));
 

@@ -44,7 +44,7 @@ const NotificationScreen = observer(() => {
       }
     } else if (item.type === "booking_accepted" || item.type === "booking_rejected") {
       // Passenger's booking was accepted/rejected -> Go to My Bookings
-      router.push("/(tabs)/bookings");
+      router.push("/(tabs)/explore");
     } else if (item.type === "booking_cancelled") {
       // Could be driver (passenger cancelled) or passenger (driver cancelled? no that's ride_cancelled)
       // Usually "booking_cancelled" notification is sent to driver when passenger cancels
@@ -56,7 +56,7 @@ const NotificationScreen = observer(() => {
       }
     } else if (item.type === "ride_cancelled") {
       // Passenger notified that ride is cancelled -> Go to Bookings/Trips
-      router.push("/(tabs)/bookings");
+      router.push("/(tabs)/explore");
     } else if (item.type === "chat_message") {
       // Open chat for this booking
       if (item.payload?.booking_id) {
