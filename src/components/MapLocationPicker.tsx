@@ -17,6 +17,84 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import LeafletMap, { LeafletMapRef } from "./LeafletMap";
 
+// Cache for reverse geocoding results to avoid redundant API calls
+const reverseGeocodeCache = new Map<string, any>();
+const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+// Rate limiter for Nominatim API (max 1 request per second)
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL_MS = 1100; // Slightly over 1 second for safety
+
+/**
+ * Wait for rate limit to be satisfied before making next request
+ */
+async function waitForRateLimit(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS) {
+    const waitTime = MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest;
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
+  }
+  lastRequestTime = Date.now();
+}
+
+/**
+ * Get cached geocode result if available and not expired
+ */
+function getCachedGeocode(lat: number, lng: number): any | null {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`; // Round to 4 decimals (~11m accuracy)
+  const cached = reverseGeocodeCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_EXPIRY_MS) {
+    return cached.data;
+  }
+  return null;
+}
+
+/**
+ * Store geocode result in cache
+ */
+function setCachedGeocode(lat: number, lng: number, data: any): void {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  reverseGeocodeCache.set(key, { data, timestamp: Date.now() });
+}
+
+/**
+ * Exponential backoff retry wrapper for fetch requests
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 2,
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await waitForRateLimit();
+      const response = await fetch(url, options);
+      
+      // If we get 509 (rate limit), wait and retry
+      if (response.status === 509 && attempt < maxRetries) {
+        const backoffMs = Math.min(2000 * Math.pow(2, attempt), 10000);
+        console.log(`Rate limited (509), retrying in ${backoffMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      
+      return response;
+    } catch (error: any) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+        console.log(`Request failed, retrying in ${backoffMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+  
+  throw lastError || new Error("Request failed after retries");
+}
+
 export interface MapLocationData {
   address: string;
   city: string;
@@ -131,7 +209,7 @@ export default function MapLocationPicker({
   const searchPlacesNominatim = async (query: string) => {
     setIsSearching(true);
     try {
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `https://nominatim.openstreetmap.org/search?` +
           `q=${encodeURIComponent(query)}` +
           `&format=json` +
@@ -144,6 +222,11 @@ export default function MapLocationPicker({
           },
         },
       );
+      
+      if (!response.ok) {
+        throw new Error(`Search failed with status ${response.status}`);
+      }
+      
       const data = await response.json();
       if (data) {
         setSearchResults(
@@ -161,7 +244,7 @@ export default function MapLocationPicker({
       console.error("Nominatim search error:", error);
       toast.error(
         "Search Error",
-        "Could not fetch search results from OpenStreetMap.",
+        "Could not fetch search results. Please try again later.",
       );
     } finally {
       setIsSearching(false);
@@ -365,18 +448,42 @@ export default function MapLocationPicker({
 
   const reverseGeocodeNominatim = async (lat: number, lng: number) => {
     try {
+      // Check cache first
+      const cached = getCachedGeocode(lat, lng);
+      if (cached) {
+        console.log("Using cached reverse geocode result");
+        setSelectedLocation({
+          address: cached.display_name,
+          city: cached.city,
+          postcode: cached.postcode,
+          country: cached.country,
+          latitude: lat,
+          longitude: lng,
+        });
+        return;
+      }
+
       const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         headers: { "User-Agent": "MyAirportApp/1.0" },
       });
 
-      // If server returned non-2xx, read text and log to help diagnose (avoids JSON parse error)
+      // If server returned non-2xx, handle appropriately
       if (!response.ok) {
         const bodyText = await response.text().catch(() => "<unreadable>");
         console.error(
           `Nominatim reverse geocode HTTP ${response.status}: ${response.statusText}`,
           bodyText,
         );
+        
+        // For rate limit errors, show user-friendly message
+        if (response.status === 509) {
+          toast.warning(
+            "Service Busy",
+            "Location service is temporarily busy. Using coordinates instead.",
+          );
+        }
+        
         throw new Error(`Nominatim HTTP ${response.status}`);
       }
 
@@ -414,6 +521,16 @@ export default function MapLocationPicker({
           address.municipality ||
           address.county ||
           "";
+
+        const locationData = {
+          display_name: data.display_name,
+          city,
+          postcode: address.postcode || "",
+          country: address.country || "",
+        };
+
+        // Cache the result
+        setCachedGeocode(lat, lng, locationData);
 
         setSelectedLocation({
           address: data.display_name,
