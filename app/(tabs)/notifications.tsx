@@ -96,6 +96,16 @@ const getNotifConfig = (item: any): NotifConfig => {
           ? `${p.driver_name} accepted your ride request`
           : "Your ride request has been accepted",
       };
+    case "request_booked":
+      return {
+        icon: "car",
+        color: "#10B981",
+        bgColor: "#D1FAE5",
+        title: "Ride Booked!",
+        subtitle: p.driver_name
+          ? `Your ride with ${p.driver_name} has been confirmed and paid${p.seats ? ` • ${p.seats} seat${p.seats > 1 ? "s" : ""}` : ""}${p.luggage_count ? ` • ${p.luggage_count} luggage` : ""}`
+          : "Your ride request has been booked and confirmed",
+      };
     case "offer_accepted":
       return {
         icon: "thumbs-up",
@@ -106,15 +116,25 @@ const getNotifConfig = (item: any): NotifConfig => {
           ? `${p.passenger_name} accepted your offer`
           : "Your offer has been accepted",
       };
-    case "offer_received":
+    case "offer_rejected":
       return {
-        icon: "hand-right",
-        color: "#6366F1",
-        bgColor: "#EEF2FF",
-        title: "New Offer Received",
-        subtitle: p.driver_name
-          ? `${p.driver_name} sent you an offer${p.price_per_seat ? ` · €${p.price_per_seat}/seat` : ""}`
-          : "A driver sent you an offer",
+        icon: "close-circle",
+        color: "#EF4444",
+        bgColor: "#FEE2E2",
+        title: "Offer Not Accepted",
+        subtitle: p.passenger_name
+          ? `${p.passenger_name} decided not to accept your offer`
+          : "Your offer was not accepted",
+      };
+    case "rating_received":
+      return {
+        icon: "star",
+        color: "#F59E0B",
+        bgColor: "#FEF3C7",
+        title: "New Rating Received",
+        subtitle: p.from_user_name
+          ? `${p.from_user_name} rated you ${p.stars} stars${p.comment ? ` • "${p.comment.substring(0, 50)}..."` : ""}`
+          : `You received a ${p.stars} star rating`,
       };
     // --- Rating ---
     case "rate_driver":
@@ -166,8 +186,11 @@ const SUPPORTED_TYPES = [
   "booking_cancelled",
   "ride_cancelled",
   "request_accepted",
+  "request_booked",
   "offer_accepted",
+  "offer_rejected",
   "offer_received",
+  "rating_received",
   "chat_message",
   "rate_driver",
   "rate_passenger",
@@ -186,7 +209,10 @@ const NotificationsScreen = observer(() => {
   // All notifications unified, sorted newest first
   const allNotifications = [...notificationStore.notifications]
     .filter((n) => SUPPORTED_TYPES.includes(n.type))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
   const handlePress = (item: any) => {
     notificationStore.markAsRead(item._id);
@@ -195,47 +221,108 @@ const NotificationsScreen = observer(() => {
     switch (item.type) {
       case "chat_message":
         if (p.booking_id) {
-          router.push({ pathname: "/chat", params: { bookingId: p.booking_id } });
+          router.push({
+            pathname: "/chat",
+            params: { bookingId: p.booking_id },
+          });
         }
         break;
       case "booking_request":
         if (p.ride_id) {
-          router.push({ pathname: "/ride-details/[id]", params: { id: p.ride_id } });
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
         }
         break;
       case "booking_accepted":
       case "booking_rejected":
       case "booking_cancelled":
         if (p.ride_id) {
-          router.push({ pathname: "/ride-details/[id]", params: { id: p.ride_id } });
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
         }
         break;
       case "ride_cancelled":
         if (p.ride_id) {
-          router.push({ pathname: "/ride-details/[id]", params: { id: p.ride_id } });
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
         }
         break;
       case "request_accepted":
         if (p.request_id) {
-          router.push({ pathname: "/request-details/[id]", params: { id: p.request_id } });
+          router.push({
+            pathname: "/request-details/[id]",
+            params: { id: p.request_id },
+          });
+        }
+        break;
+      case "request_booked":
+        if (p.request_id) {
+          router.push({
+            pathname: "/request-details/[id]",
+            params: { id: p.request_id },
+          });
+        } else if (p.ride_id) {
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
         }
         break;
       case "offer_accepted":
         if (p.request_id) {
-          router.push({ pathname: "/request-details/[id]", params: { id: p.request_id } });
+          router.push({
+            pathname: "/request-details/[id]",
+            params: { id: p.request_id },
+          });
         }
         break;
       case "offer_received":
         if (p.request_id) {
-          router.push({ pathname: "/request-details/[id]", params: { id: p.request_id } });
+          router.push({
+            pathname: "/request-details/[id]",
+            params: { id: p.request_id },
+          });
         } else {
           router.push("/(tabs)/explore");
+        }
+        break;
+      case "offer_rejected":
+        if (p.request_id) {
+          router.push({
+            pathname: "/request-details/[id]",
+            params: { id: p.request_id },
+          });
+        } else if (p.ride_id) {
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
+        }
+        break;
+      case "rating_received":
+        // Could navigate to profile or ride details
+        if (p.ride_id) {
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
+        } else {
+          router.push("/(tabs)/profile");
         }
         break;
       case "rate_driver":
       case "rate_passenger":
         if (p.ride_id) {
-          router.push({ pathname: "/ride-details/[id]", params: { id: p.ride_id } });
+          router.push({
+            pathname: "/ride-details/[id]",
+            params: { id: p.ride_id },
+          });
         }
         break;
     }
@@ -266,17 +353,25 @@ const NotificationsScreen = observer(() => {
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
-            <Text style={[styles.title, isRead && styles.titleRead]} numberOfLines={1}>
+            <Text
+              style={[styles.title, isRead && styles.titleRead]}
+              numberOfLines={1}
+            >
               {config.title}
             </Text>
             <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
           </View>
-          <Text style={[styles.subtitle, isRead && styles.subtitleRead]} numberOfLines={2}>
+          <Text
+            style={[styles.subtitle, isRead && styles.subtitleRead]}
+            numberOfLines={2}
+          >
             {config.subtitle}
           </Text>
         </View>
 
-        {!isRead && <View style={[styles.unreadDot, { backgroundColor: config.color }]} />}
+        {!isRead && (
+          <View style={[styles.unreadDot, { backgroundColor: config.color }]} />
+        )}
       </TouchableOpacity>
     );
   };
@@ -287,7 +382,11 @@ const NotificationsScreen = observer(() => {
 
       {allNotifications.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="notifications-off-outline" size={64} color="#CBD5E1" />
+          <Ionicons
+            name="notifications-off-outline"
+            size={64}
+            color="#CBD5E1"
+          />
           <Text style={styles.emptyText}>No notifications yet</Text>
         </View>
       ) : (

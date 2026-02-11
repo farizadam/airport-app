@@ -50,11 +50,60 @@ const TabIcon = ({
   </View>
 );
 
+const ProfileAvatar = observer(
+  ({ color, focused }: { color: string; focused: boolean }) => {
+    const { user } = useAuthStore();
+
+    if (!user?.avatar_url) {
+      return (
+        <Ionicons
+          name={focused ? "person" : "person-outline"}
+          size={focused ? 24 : 22}
+          color={color}
+        />
+      );
+    }
+
+    return (
+      <View style={styles.iconContainer}>
+        {focused && (
+          <View style={styles.glowContainer}>
+            <LinearGradient
+              colors={[
+                "rgba(59, 130, 246, 0.6)",
+                "rgba(6, 182, 212, 0.3)",
+                "transparent",
+              ]}
+              style={styles.iconGlow}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+            />
+          </View>
+        )}
+        <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
+          <Image
+            source={{ uri: user.avatar_url }}
+            style={[
+              styles.profileTabAvatar,
+              focused && styles.profileTabAvatarActive,
+            ]}
+          />
+        </View>
+      </View>
+    );
+  },
+);
+
 const TabLayout = observer(() => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
   const { isAuthenticated, user } = useAuthStore();
+
+  // Get unread notification count
+  const unreadCount = notificationStore.notifications.filter(
+    (n) => !n.is_read,
+  ).length;
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -64,10 +113,6 @@ const TabLayout = observer(() => {
     }
     return () => notificationStore.stopPolling();
   }, [isAuthenticated]);
-
-  const unreadCount = notificationStore.notifications.filter(
-    (n) => !n.is_read,
-  ).length;
 
   return (
     <Tabs
@@ -146,8 +191,10 @@ const TabLayout = observer(() => {
         name="notifications"
         options={{
           title: "Alerts",
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarBadgeStyle: { backgroundColor: "#EF4444", fontSize: 10 },
+          ...(unreadCount > 0 && {
+            tabBarBadge: unreadCount,
+            tabBarBadgeStyle: { backgroundColor: "#EF4444", fontSize: 10 },
+          }),
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
               iconName="notifications-outline"
@@ -177,40 +224,7 @@ const TabLayout = observer(() => {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, focused }) => (
-            user?.avatar_url ? (
-              <View style={styles.iconContainer}>
-                {focused && (
-                  <View style={styles.glowContainer}>
-                    <LinearGradient
-                      colors={[
-                        "rgba(59, 130, 246, 0.6)",
-                        "rgba(6, 182, 212, 0.3)",
-                        "transparent",
-                      ]}
-                      style={styles.iconGlow}
-                      start={{ x: 0.5, y: 0 }}
-                      end={{ x: 0.5, y: 1 }}
-                    />
-                  </View>
-                )}
-                <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
-                  <Image
-                    source={{ uri: user.avatar_url }}
-                    style={[
-                      styles.profileTabAvatar,
-                      focused && styles.profileTabAvatarActive,
-                    ]}
-                  />
-                </View>
-              </View>
-            ) : (
-              <TabIcon
-                iconName="person-outline"
-                iconNameFocused="person"
-                color={color}
-                focused={focused}
-              />
-            )
+            <ProfileAvatar color={color} focused={focused} />
           ),
         }}
       />

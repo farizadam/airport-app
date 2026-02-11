@@ -2,11 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { 
-  LOCATION_COLORS, 
-  formatTripDateTime, 
+import {
+  LOCATION_COLORS,
+  formatTripDateTime,
   formatSeats,
-  TripDirection 
+  TripDirection,
 } from "../utils/tripDisplayUtils";
 import ProfileAvatar from "./ProfileAvatar";
 
@@ -59,7 +59,11 @@ interface TripCardProps {
   showCancelButton?: boolean;
 }
 
-export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardProps) => {
+export const TripCard = ({
+  item,
+  onCancel,
+  showCancelButton = false,
+}: TripCardProps) => {
   const router = useRouter();
 
   // Use shared utility for date/time formatting
@@ -73,7 +77,7 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
     if (actionType === "awaiting_response") {
       return { bg: "#E0E7FF", text: "#4F46E5", icon: "hourglass" as const };
     }
-    
+
     switch (status) {
       case "accepted":
       case "confirmed":
@@ -81,99 +85,176 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
       case "matched":
       case "offer_accepted":
       case "request_accepted":
-        return { bg: "#DCFCE7", text: "#16A34A", icon: "checkmark-circle" as const };
+        return {
+          bg: "#DCFCE7",
+          text: "#16A34A",
+          icon: "checkmark-circle" as const,
+        };
       case "pending":
       case "open":
       case "booking_request":
       case "pending_action":
         return { bg: "#FEF3C7", text: "#D97706", icon: "time" as const };
       case "cancelled":
-        return { bg: "#FEE2E2", text: "#DC2626", icon: "close-circle" as const };
+        return {
+          bg: "#FEE2E2",
+          text: "#DC2626",
+          icon: "close-circle" as const,
+        };
       case "active":
-        return { bg: "#DBEAFE", text: "#3B82F6", icon: "radio-button-on" as const };
+        return {
+          bg: "#DBEAFE",
+          text: "#3B82F6",
+          icon: "radio-button-on" as const,
+        };
       default:
         return { bg: "#F1F5F9", text: "#64748B", icon: "ellipse" as const };
     }
   };
 
   // Get display status text
-  const getStatusText = (status: string, actionType?: string, pendingCount?: number) => {
+  const getStatusText = (
+    status: string,
+    actionType?: string,
+    pendingCount?: number,
+  ) => {
     if (actionType === "booking_requests") {
-      return `${pendingCount || 0} booking request${pendingCount !== 1 ? 's' : ''}`;
+      return `${pendingCount || 0} booking request${pendingCount !== 1 ? "s" : ""}`;
     }
     if (actionType === "offers_received") {
-      return `${pendingCount || 0} offer${pendingCount !== 1 ? 's' : ''} received`;
+      return `${pendingCount || 0} offer${pendingCount !== 1 ? "s" : ""} received`;
     }
     if (actionType === "awaiting_response") {
       return "Awaiting response";
     }
-    
+
     // Default status formatting
-    return status.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+    return status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
   const statusColors = getStatusColor(item.status, item.actionType);
-  const statusText = getStatusText(item.status, item.actionType, item.pendingCount);
+  const statusText = getStatusText(
+    item.status,
+    item.actionType,
+    item.pendingCount,
+  );
   const isDriver = item.role === "driver";
 
   // Direction-based display using shared color constants
   // RULE: to_airport = City(top) → Airport(bottom), from_airport = Airport(top) → City(bottom)
   const isToAirport = item.direction === "to_airport";
-  
+
   // Start Node (Top) - pickupLocation already set correctly by parent
   const startIcon = isToAirport ? "location-sharp" : "airplane";
-  const startColor = isToAirport ? LOCATION_COLORS.city : LOCATION_COLORS.airport;
-  const startBg = isToAirport ? LOCATION_COLORS.cityBg : LOCATION_COLORS.airportBg;
+  const startColor = isToAirport
+    ? LOCATION_COLORS.city
+    : LOCATION_COLORS.airport;
+  const startBg = isToAirport
+    ? LOCATION_COLORS.cityBg
+    : LOCATION_COLORS.airportBg;
 
   // End Node (Bottom) - dropoffLocation already set correctly by parent
   const endIcon = isToAirport ? "airplane" : "location-sharp";
   const endColor = isToAirport ? LOCATION_COLORS.airport : LOCATION_COLORS.city;
-  const endBg = isToAirport ? LOCATION_COLORS.airportBg : LOCATION_COLORS.cityBg;
+  const endBg = isToAirport
+    ? LOCATION_COLORS.airportBg
+    : LOCATION_COLORS.cityBg;
 
   // Format seats display using shared utility
-  const seatsDisplay = formatSeats(item.seats, item.totalSeats, item.seats_left);
+  const seatsDisplay = formatSeats(
+    item.seats,
+    item.totalSeats,
+    item.seats_left,
+  );
 
   return (
     <TouchableOpacity
       style={styles.tripCard}
       onPress={() => {
         console.log("👉 Tapping Trip Card:", item.type, item.id);
-        if (item.type === "ride") {
-          router.push({ pathname: "/ride-details/[id]", params: { id: item.id } });
-        } else if (item.type === "request") {
-          router.push({ pathname: "/request-details/[id]", params: { id: item.id } });
-        } else if (item.type === "booking") {
-           if (item.rideId) {
-             router.push({ pathname: "/ride-details/[id]", params: { id: item.rideId } }); 
-           } else {
-             router.push("/(tabs)/explore");
-           }
-        } else if (item.type === "offer") {
-          // Navigate to the request details for offers
-          if (item.requestId) {
-            router.push({ pathname: "/request-details/[id]", params: { id: item.requestId } });
+        try {
+          if (item.type === "ride") {
+            console.log("🔄 Navigating to ride details:", item.id);
+            router.push({
+              pathname: "/ride-details/[id]",
+              params: { id: item.id },
+            });
+          } else if (item.type === "request") {
+            console.log("🔄 Navigating to request details:", item.id);
+            router.push({
+              pathname: "/request-details/[id]",
+              params: { id: item.id },
+            });
+          } else if (item.type === "booking") {
+            if (item.rideId) {
+              console.log(
+                "🔄 Navigating to ride details from booking:",
+                item.rideId,
+              );
+              router.push({
+                pathname: "/ride-details/[id]",
+                params: { id: item.rideId },
+              });
+            } else {
+              console.log("🔄 No rideId, going to explore");
+              router.push("/(tabs)/explore");
+            }
+          } else if (item.type === "offer") {
+            if (item.requestId) {
+              console.log(
+                "🔄 Navigating to request details from offer:",
+                item.requestId,
+              );
+              router.push({
+                pathname: "/request-details/[id]",
+                params: { id: item.requestId },
+              });
+            } else {
+              console.log("❌ No requestId for offer");
+            }
           }
+        } catch (error) {
+          console.error("❌ Navigation error:", error);
         }
       }}
     >
       <View style={styles.tripHeader}>
-        <View style={[styles.roleBadge, { backgroundColor: isDriver ? "#DBEAFE" : "#F3E8FF" }]}>
-          <Ionicons 
-            name={isDriver ? "car" : "person"} 
-            size={14} 
-            color={isDriver ? "#3B82F6" : "#8B5CF6"} 
+        <View
+          style={[
+            styles.roleBadge,
+            { backgroundColor: isDriver ? "#DBEAFE" : "#F3E8FF" },
+          ]}
+        >
+          <Ionicons
+            name={isDriver ? "car" : "person"}
+            size={14}
+            color={isDriver ? "#3B82F6" : "#8B5CF6"}
           />
-          <Text style={[styles.roleBadgeText, { color: isDriver ? "#3B82F6" : "#8B5CF6" }]}>
+          <Text
+            style={[
+              styles.roleBadgeText,
+              { color: isDriver ? "#3B82F6" : "#8B5CF6" },
+            ]}
+          >
             {isDriver ? "As Driver" : "As Passenger"}
           </Text>
         </View>
-        
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View
+            style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}
+          >
             {statusColors.icon && (
-              <Ionicons name={statusColors.icon} size={12} color={statusColors.text} style={{ marginRight: 4 }} />
+              <Ionicons
+                name={statusColors.icon}
+                size={12}
+                color={statusColors.text}
+                style={{ marginRight: 4 }}
+              />
             )}
-            <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
+            <Text
+              style={[styles.statusBadgeText, { color: statusColors.text }]}
+            >
               {statusText}
             </Text>
           </View>
@@ -183,33 +264,45 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
       <View style={styles.tripRoute}>
         <View style={styles.routePoint}>
           <View style={[styles.iconContainer, { backgroundColor: startBg }]}>
-             <Ionicons name={startIcon} size={16} color={startColor} />
+            <Ionicons name={startIcon} size={16} color={startColor} />
           </View>
-          <Text style={styles.routeText} numberOfLines={1}>{item.pickupLocation}</Text>
+          <Text style={styles.routeText} numberOfLines={1}>
+            {item.pickupLocation}
+          </Text>
         </View>
         <View style={styles.routeLineContainer}>
-           <View style={{ width: 2, height: 16, backgroundColor: '#CBD5E1' }} />
-           <Ionicons name="chevron-down" size={16} color="#CBD5E1" style={{ marginTop: -4 }} />
+          <View style={{ width: 2, height: 16, backgroundColor: "#CBD5E1" }} />
+          <Ionicons
+            name="chevron-down"
+            size={16}
+            color="#CBD5E1"
+            style={{ marginTop: -4 }}
+          />
         </View>
         <View style={styles.routePoint}>
           <View style={[styles.iconContainer, { backgroundColor: endBg }]}>
-             <Ionicons name={endIcon} size={16} color={endColor} />
+            <Ionicons name={endIcon} size={16} color={endColor} />
           </View>
-          <Text style={styles.routeText} numberOfLines={1}>{item.dropoffLocation}</Text>
+          <Text style={styles.routeText} numberOfLines={1}>
+            {item.dropoffLocation}
+          </Text>
         </View>
       </View>
 
       {/* Confirmed Ride Info - Show passenger count for drivers */}
-      {item.type === "ride" && item.status === "confirmed" && item.acceptedCount && (
-        <View style={styles.confirmedSection}>
-          <View style={styles.confirmedBadge}>
-            <Ionicons name="people" size={16} color="#10B981" />
-            <Text style={styles.confirmedText}>
-              {item.acceptedCount} passenger{item.acceptedCount !== 1 ? 's' : ''} confirmed
-            </Text>
+      {item.type === "ride" &&
+        item.status === "confirmed" &&
+        item.acceptedCount && (
+          <View style={styles.confirmedSection}>
+            <View style={styles.confirmedBadge}>
+              <Ionicons name="people" size={16} color="#10B981" />
+              <Text style={styles.confirmedText}>
+                {item.acceptedCount} passenger
+                {item.acceptedCount !== 1 ? "s" : ""} confirmed
+              </Text>
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
       {/* Action Needed Banner */}
       {item.actionType === "booking_requests" && (
@@ -236,23 +329,35 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
         <View style={[styles.actionBanner, { backgroundColor: "#EEF2FF" }]}>
           <Ionicons name="hourglass-outline" size={16} color="#4F46E5" />
           <Text style={[styles.actionBannerText, { color: "#4F46E5" }]}>
-            Waiting for {item.role === "driver" ? "passenger" : "driver"} to respond
+            Waiting for {item.role === "driver" ? "passenger" : "driver"} to
+            respond
           </Text>
         </View>
       )}
 
       {/* Driver Details for Accepted Bookings */}
       {item.type === "booking" && item.status === "accepted" && item.driver && (
-        <View style={styles.driverSection} onStartShouldSetResponder={() => true}>
+        <View
+          style={styles.driverSection}
+          onStartShouldSetResponder={() => true}
+        >
           <Text style={styles.sectionHeader}>Driver Details</Text>
           <View style={styles.driverRow}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.driverInfo}
               onPress={() => {
                 const driverId = item.driver?.id || item.driver?._id;
-                console.log("👤 Navigating to driver profile:", driverId, "Driver data:", JSON.stringify(item.driver));
+                console.log(
+                  "👤 Navigating to driver profile:",
+                  driverId,
+                  "Driver data:",
+                  JSON.stringify(item.driver),
+                );
                 if (driverId) {
-                  router.push({ pathname: "/user-profile/[id]", params: { id: driverId } });
+                  router.push({
+                    pathname: "/user-profile/[id]",
+                    params: { id: driverId },
+                  });
                 } else {
                   console.log("⚠️ No driver ID found in item.driver");
                 }
@@ -271,10 +376,13 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
               />
               <View>
                 <Text style={styles.driverName}>
-                  {item.driver.first_name || "Driver"} {item.driver.last_name || ""}
+                  {item.driver.first_name || "Driver"}{" "}
+                  {item.driver.last_name || ""}
                 </Text>
                 <Text style={styles.driverSubtext}>
-                  {item.driver.rating ? `★ ${item.driver.rating.toFixed(1)}` : "No rating"}
+                  {item.driver.rating
+                    ? `★ ${item.driver.rating.toFixed(1)}`
+                    : "No rating"}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -288,7 +396,8 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
             <View style={styles.carInfo}>
               <Ionicons name="car-sport-outline" size={14} color="#64748B" />
               <Text style={styles.carText}>
-                {item.driver.car_model} • {item.driver.car_color || "Unknown color"}
+                {item.driver.car_model} •{" "}
+                {item.driver.car_color || "Unknown color"}
               </Text>
             </View>
           )}
@@ -296,53 +405,73 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
       )}
 
       {/* Passenger Details for Booking Requests */}
-      {item.type === "booking" && item.status === "booking_request" && item.passenger && (
-        <View style={styles.driverSection} onStartShouldSetResponder={() => true}>
-          <Text style={styles.sectionHeader}>Passenger Request</Text>
-          <View style={styles.driverRow}>
-            <TouchableOpacity 
-              style={styles.driverInfo}
-              onPress={() => {
-                const passengerId = item.passenger?.id || item.passenger?._id;
-                console.log("👤 Navigating to passenger profile:", passengerId);
-                if (passengerId) router.push({ pathname: "/user-profile/[id]", params: { id: passengerId } });
-              }}
-              activeOpacity={0.7}
-            >
-              <ProfileAvatar
-                userId={item.passenger.id || item.passenger._id}
-                firstName={item.passenger.first_name}
-                lastName={item.passenger.last_name}
-                avatarUrl={item.passenger.avatar_url}
-                rating={item.passenger.rating}
-                size="medium"
-                showRating
-                disabled
-              />
-              <View>
-                <Text style={styles.driverName}>
-                  {item.passenger.first_name || "Passenger"} {item.passenger.last_name || ""}
-                </Text>
-                <Text style={styles.driverSubtext}>
-                  {item.seats ? `Requests ${item.seats} seat(s)` : ""}
-                </Text>
-              </View>
-            </TouchableOpacity>
+      {item.type === "booking" &&
+        item.status === "booking_request" &&
+        item.passenger && (
+          <View
+            style={styles.driverSection}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={styles.sectionHeader}>Passenger Request</Text>
+            <View style={styles.driverRow}>
+              <TouchableOpacity
+                style={styles.driverInfo}
+                onPress={() => {
+                  const passengerId = item.passenger?.id || item.passenger?._id;
+                  console.log(
+                    "👤 Navigating to passenger profile:",
+                    passengerId,
+                  );
+                  if (passengerId)
+                    router.push({
+                      pathname: "/user-profile/[id]",
+                      params: { id: passengerId },
+                    });
+                }}
+                activeOpacity={0.7}
+              >
+                <ProfileAvatar
+                  userId={item.passenger.id || item.passenger._id}
+                  firstName={item.passenger.first_name}
+                  lastName={item.passenger.last_name}
+                  avatarUrl={item.passenger.avatar_url}
+                  rating={item.passenger.rating}
+                  size="medium"
+                  showRating
+                  disabled
+                />
+                <View>
+                  <Text style={styles.driverName}>
+                    {item.passenger.first_name || "Passenger"}{" "}
+                    {item.passenger.last_name || ""}
+                  </Text>
+                  <Text style={styles.driverSubtext}>
+                    {item.seats ? `Requests ${item.seats} seat(s)` : ""}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
       {/* Passenger Details for Offers (driver sees passenger info) */}
       {item.type === "offer" && item.passenger && (
-        <View style={styles.driverSection} onStartShouldSetResponder={() => true}>
+        <View
+          style={styles.driverSection}
+          onStartShouldSetResponder={() => true}
+        >
           <Text style={styles.sectionHeader}>Passenger</Text>
           <View style={styles.driverRow}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.driverInfo}
               onPress={() => {
                 const passengerId = item.passenger?.id || item.passenger?._id;
                 console.log("👤 Navigating to passenger profile:", passengerId);
-                if (passengerId) router.push({ pathname: "/user-profile/[id]", params: { id: passengerId } });
+                if (passengerId)
+                  router.push({
+                    pathname: "/user-profile/[id]",
+                    params: { id: passengerId },
+                  });
               }}
               activeOpacity={0.7}
             >
@@ -358,7 +487,8 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
               />
               <View>
                 <Text style={styles.driverName}>
-                  {item.passenger.first_name || "Passenger"} {item.passenger.last_name || ""}
+                  {item.passenger.first_name || "Passenger"}{" "}
+                  {item.passenger.last_name || ""}
                 </Text>
                 <Text style={styles.driverSubtext}>
                   {item.seats ? `Needs ${item.seats} seat(s)` : ""}
@@ -372,39 +502,52 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
 
       <View style={styles.tripFooter}>
         <View style={styles.tripInfoLeft}>
-           <View style={styles.tripDateTime}>
-             <Ionicons name="calendar-outline" size={14} color="#64748B" />
-             <Text style={styles.tripDateTimeText}>{dateTime.date}</Text>
-             <Ionicons name="time-outline" size={14} color="#64748B" style={{ marginLeft: 8 }} />
-             <Text style={styles.tripDateTimeText}>{dateTime.time}</Text>
-           </View>
-           {/* Added more spacing here */}
-           <View style={{ width: 16 }} />
-           {(item.seats !== undefined || item.seats_left !== undefined || item.totalSeats !== undefined) && (
-             <View style={styles.tripSeats}>
-               <Ionicons name="people-outline" size={14} color="#64748B" />
-               <Text style={styles.tripSeatsText}>{seatsDisplay}</Text>
-             </View>
-           )}
-           {(item.luggage_capacity !== undefined && item.luggage_capacity > 0) && (
-             <View style={[styles.tripSeats, { marginLeft: 8 }]}>
-               <Ionicons name="briefcase-outline" size={14} color="#64748B" />
-               <Text style={styles.tripSeatsText}>
-                 {item.luggage_left !== undefined ? `${item.luggage_left}/${item.luggage_capacity}` : item.luggage_capacity}
-               </Text>
-             </View>
-           )}
-           {(item.luggage_count !== undefined && item.luggage_count > 0 && !item.luggage_capacity) && (
-             <View style={[styles.tripSeats, { marginLeft: 8 }]}>
-               <Ionicons name="briefcase-outline" size={14} color="#64748B" />
-               <Text style={styles.tripSeatsText}>{item.luggage_count} bag(s)</Text>
-             </View>
-           )}
+          <View style={styles.tripDateTime}>
+            <Ionicons name="calendar-outline" size={14} color="#64748B" />
+            <Text style={styles.tripDateTimeText}>{dateTime.date}</Text>
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color="#64748B"
+              style={{ marginLeft: 8 }}
+            />
+            <Text style={styles.tripDateTimeText}>{dateTime.time}</Text>
+          </View>
+          {/* Added more spacing here */}
+          <View style={{ width: 16 }} />
+          {(item.seats !== undefined ||
+            item.seats_left !== undefined ||
+            item.totalSeats !== undefined) && (
+            <View style={styles.tripSeats}>
+              <Ionicons name="people-outline" size={14} color="#64748B" />
+              <Text style={styles.tripSeatsText}>{seatsDisplay}</Text>
+            </View>
+          )}
+          {item.luggage_capacity !== undefined && item.luggage_capacity > 0 && (
+            <View style={[styles.tripSeats, { marginLeft: 8 }]}>
+              <Ionicons name="briefcase-outline" size={14} color="#64748B" />
+              <Text style={styles.tripSeatsText}>
+                {item.luggage_left !== undefined
+                  ? `${item.luggage_left}/${item.luggage_capacity}`
+                  : item.luggage_capacity}
+              </Text>
+            </View>
+          )}
+          {item.luggage_count !== undefined &&
+            item.luggage_count > 0 &&
+            !item.luggage_capacity && (
+              <View style={[styles.tripSeats, { marginLeft: 8 }]}>
+                <Ionicons name="briefcase-outline" size={14} color="#64748B" />
+                <Text style={styles.tripSeatsText}>
+                  {item.luggage_count} bag(s)
+                </Text>
+              </View>
+            )}
         </View>
 
         {/* Cancel Button (Only for drivers — passengers cannot cancel from card) */}
         {showCancelButton && onCancel && item.role !== "passenger" && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.cardCancelButton}
             onPress={() => onCancel(item)}
           >
@@ -471,13 +614,13 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 10,
   },
   routeLineContainer: {
     width: 24,
-    alignItems: 'center',
+    alignItems: "center",
     marginRight: 10,
   },
   routeLine: {
@@ -500,15 +643,15 @@ const styles = StyleSheet.create({
     borderTopColor: "#F1F5F9",
   },
   tripInfoLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   tripDateTime: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 16, 
+    marginRight: 16,
   },
   tripDateTimeText: {
     fontSize: 12,
@@ -582,13 +725,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   driverRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   driverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   driverName: {
@@ -606,8 +749,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   carInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 8,
     gap: 6,
     backgroundColor: "#F8FAFC",

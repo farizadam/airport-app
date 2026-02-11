@@ -111,13 +111,19 @@ export default function RideDetailsScreen() {
 
   const { user, isAuthenticated } = useAuthStore();
 
-  const { wallet, getWallet, payWithWallet, isPaying: isWalletPaying } = useWalletStore();
-  
+  const {
+    wallet,
+    getWallet,
+    payWithWallet,
+    isPaying: isWalletPaying,
+  } = useWalletStore();
+
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [seats, setSeats] = useState("1");
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
+  const [luggageCount, setLuggageCount] = useState("0");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [actionId, setActionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,10 +178,10 @@ export default function RideDetailsScreen() {
 
       loadRideDetails();
       getMyBookings(); // Fetch my bookings to check status
-      
+
       // Fetch wallet balance for payment options
       if (isAuthenticated) {
-        getWallet().catch(err => console.log("Wallet fetch error:", err));
+        getWallet().catch((err) => console.log("Wallet fetch error:", err));
       }
 
       return () => {
@@ -235,8 +241,16 @@ export default function RideDetailsScreen() {
       return;
     }
 
-    // Check payment method selected
-    if (paymentMethod === 'wallet') {
+    const luggage = parseInt(luggageCount) || 0;
+    if (luggage > (ride?.luggage_left ?? ride?.luggage_capacity ?? 0)) {
+      toast.warning(
+        "Not Enough Luggage Space",
+        `Only ${ride?.luggage_left ?? ride?.luggage_capacity ?? 0} luggage spot(s) available`,
+      );
+      return;
+    }
+
+    if (paymentMethod === "wallet") {
       processWalletPayment();
     } else {
       processPaymentAndBooking();
@@ -246,19 +260,29 @@ export default function RideDetailsScreen() {
   const processWalletPayment = async () => {
     try {
       setBookingModalVisible(false);
-      
+
       console.log("Processing wallet payment for ride:", id, "seats:", seats);
-      
-      const result = await payWithWallet(id!, parseInt(seats));
-      
+
+      const result = await payWithWallet(
+        id!,
+        parseInt(seats),
+        parseInt(luggageCount) || 0,
+      );
+
       if (result.success) {
         // Refresh bookings
         await getMyBookings();
-        
-        toast.success("🎉 Booking Confirmed!", `Paid with wallet balance.\nNew balance: €${(result.newBalance! / 100).toFixed(2)}\nNo Stripe fees applied! 💰`);
+
+        toast.success(
+          "🎉 Booking Confirmed!",
+          `Paid with wallet balance.\nNew balance: €${(result.newBalance! / 100).toFixed(2)}\nNo Stripe fees applied! 💰`,
+        );
         router.replace("/(tabs)/explore?tab=active");
       } else {
-        toast.error("Payment Failed", result.message || "Could not process wallet payment");
+        toast.error(
+          "Payment Failed",
+          result.message || "Could not process wallet payment",
+        );
       }
     } catch (error: any) {
       console.log("Wallet payment error:", error);
@@ -269,17 +293,18 @@ export default function RideDetailsScreen() {
   const processPaymentAndBooking = async () => {
     try {
       setBookingModalVisible(false);
-      
+
       console.log("Creating payment intent for ride:", id, "seats:", seats);
-      
+
       // Step 1: Create PaymentIntent (NO booking yet)
       const response = await api.post("/payments/create-intent", {
         rideId: id,
         seats: parseInt(seats),
+        luggage_count: parseInt(luggageCount) || 0,
       });
-      
+
       console.log("Payment intent response:", response.data);
-      
+
       const { clientSecret, paymentIntentId } = response.data;
 
       // Step 2: Initialize payment sheet
@@ -287,45 +312,54 @@ export default function RideDetailsScreen() {
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: "Airport Carpooling",
       });
-      
+
       console.log("Payment sheet init result:", initResult);
-      
+
       if (initResult.error) {
-        toast.error("Error", initResult.error.message || "Failed to initialize payment");
+        toast.error(
+          "Error",
+          initResult.error.message || "Failed to initialize payment",
+        );
         return;
       }
 
       // Step 3: Present payment sheet to user
       const paymentResult = await presentPaymentSheet();
-      
+
       console.log("Payment result:", paymentResult);
-      
+
       if (paymentResult.error) {
-        toast.info("Payment Cancelled", paymentResult.error.message || "Payment was not completed.");
+        toast.info(
+          "Payment Cancelled",
+          paymentResult.error.message || "Payment was not completed.",
+        );
         return;
       }
-      
+
       // Step 4: Payment succeeded! Now create the booking
       console.log("Payment succeeded, creating booking...");
-      
+
       const completeResponse = await api.post("/payments/complete", {
         paymentIntentId: paymentIntentId,
         rideId: id,
         seats: parseInt(seats),
+        luggage_count: parseInt(luggageCount) || 0,
       });
-      
+
       console.log("Complete response:", completeResponse.data);
-      
+
       // Refresh bookings
       await getMyBookings();
-      
+
       toast.success("Payment Complete!", "Your booking is confirmed.");
       router.replace("/(tabs)/explore?tab=active");
-      
     } catch (error: any) {
       console.log("Payment error:", error);
       console.log("Error response:", error?.response?.data);
-      toast.error("Payment Failed", error?.response?.data?.message || error.message || "Payment failed");
+      toast.error(
+        "Payment Failed",
+        error?.response?.data?.message || error.message || "Payment failed",
+      );
     }
   };
 
@@ -490,7 +524,14 @@ export default function RideDetailsScreen() {
           <View
             style={[styles.section, { borderColor: "#16A34A", borderWidth: 1 }]}
           >
-            <Text style={{ fontWeight: "bold", fontSize: 16, marginBottom: 8, color: "#16A34A" }}>
+            <Text
+              style={{
+                fontWeight: "bold",
+                fontSize: 16,
+                marginBottom: 8,
+                color: "#16A34A",
+              }}
+            >
               ✅ Your booking is confirmed!
             </Text>
             <Text style={{ marginBottom: 8 }}>
@@ -777,17 +818,37 @@ export default function RideDetailsScreen() {
               </Text>
             </View>
             <View style={styles.detailItem}>
+              <Ionicons name="briefcase-outline" size={20} color="#64748B" />
+              <Text style={styles.detailLabel}>Luggage</Text>
+              <Text style={styles.detailValue}>
+                {ride.luggage_left ?? ride.luggage_capacity ?? 0} /{" "}
+                {ride.luggage_capacity ?? 0}
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
               <Ionicons name="cash-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Price</Text>
               <Text style={[styles.detailValue, { color: "#16A34A" }]}>
                 {ride.price_per_seat} EUR
               </Text>
             </View>
-            <TouchableOpacity 
-              style={[styles.detailItem, { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 8 }]}
+            <TouchableOpacity
+              style={[
+                styles.detailItem,
+                { backgroundColor: "#F8FAFC", borderRadius: 12, padding: 8 },
+              ]}
               onPress={() => {
-                const driverId = ride.driver?.id || ride.driver?._id || (typeof ride.driver_id === 'object' ? ride.driver_id?._id : ride.driver_id);
-                if (driverId) router.push({ pathname: "/user-profile/[id]", params: { id: driverId } });
+                const driverId =
+                  ride.driver?.id ||
+                  ride.driver?._id ||
+                  (typeof ride.driver_id === "object"
+                    ? ride.driver_id?._id
+                    : ride.driver_id);
+                if (driverId)
+                  router.push({
+                    pathname: "/user-profile/[id]",
+                    params: { id: driverId },
+                  });
               }}
               activeOpacity={0.7}
             >
@@ -801,17 +862,26 @@ export default function RideDetailsScreen() {
                 showRating
                 disabled
               />
-              <Text style={[styles.detailLabel, { color: '#3B82F6', fontWeight: '600' }]}>View Driver</Text>
+              <Text
+                style={[
+                  styles.detailLabel,
+                  { color: "#3B82F6", fontWeight: "600" },
+                ]}
+              >
+                View Driver
+              </Text>
             </TouchableOpacity>
           </View>
 
           {shouldShowMapAndDriver && ride.driver?.phone_number && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.phoneRow}
               onPress={() => Linking.openURL(`tel:${ride.driver.phone_number}`)}
             >
               <Ionicons name="call-outline" size={16} color="#007AFF" />
-              <Text style={[styles.phoneText, { color: '#007AFF' }]}>{ride.driver.phone_number}</Text>
+              <Text style={[styles.phoneText, { color: "#007AFF" }]}>
+                {ride.driver.phone_number}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -836,130 +906,181 @@ export default function RideDetailsScreen() {
               />
             )}
             {rideBookings.map((booking: any) => {
-              const passengerId = booking.passenger_id?._id || booking.passenger_id || booking.passenger?._id || booking.passenger?.id;
+              const passengerId =
+                booking.passenger_id?._id ||
+                booking.passenger_id ||
+                booking.passenger?._id ||
+                booking.passenger?.id;
               return (
-              <View key={booking._id || booking.id} style={styles.bookingCard}>
-                <View style={styles.bookingHeader}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (passengerId) router.push({ pathname: "/user-profile/[id]", params: { id: passengerId } });
-                    }}
-                    activeOpacity={0.7}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                  >
-                    <ProfileAvatar
-                      userId={passengerId}
-                      firstName={booking.passenger_first_name || booking.passenger_id?.first_name || booking.passenger?.first_name}
-                      lastName={booking.passenger_last_name || booking.passenger_id?.last_name || booking.passenger?.last_name}
-                      avatarUrl={booking.passenger_id?.avatar_url || booking.passenger?.avatar_url}
-                      rating={booking.passenger_id?.rating || booking.passenger?.rating}
-                      size="small"
-                      showRating
-                      disabled
-                    />
-                    <Text style={[styles.bookingPassenger, { color: '#3B82F6' }]}>
-                      {booking.passenger_first_name ||
-                        booking.passenger_id?.first_name ||
-                        booking.passenger?.first_name ||
-                        "Unknown"}{" "}
-                      {booking.passenger_last_name ||
-                        booking.passenger_id?.last_name ||
-                        booking.passenger?.last_name ||
-                        ""}
-                    </Text>
-                  </TouchableOpacity>
-                  <View
-                    style={[
-                      styles.bookingStatusBadge,
-                      booking.status === "accepted"
-                        ? styles.statusAccepted
-                        : booking.status === "rejected"
-                          ? styles.statusRejected
-                          : booking.status === "cancelled"
-                            ? styles.statusCancelled
-                            : styles.statusPending,
-                    ]}
-                  >
-                    <Text style={styles.bookingStatusText}>
-                      {booking.status === "accepted"
-                        ? "Confirmed"
-                        : booking.status}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Common Details */}
-                <View style={styles.passengerRow}>
-                  <Ionicons name="people-outline" size={16} color="#64748B" />
-                  <Text style={styles.bookingInfo}>
-                    {booking.seats || booking.seats_booked || 1} seat(s)
-                    requested
-                  </Text>
-                </View>
-
-                {/* Accepted: Show Phone and Chat */}
-                {booking.status === "accepted" && (
-                  <View style={styles.passengerDetails}>
-                    <View style={styles.acceptedButtonsRow}>
-                      {/* Chat Button */}
-                      <TouchableOpacity 
-                        style={[styles.bookingActionBtn, { backgroundColor: '#6366F1', flex: 1, marginRight: 8 }]}
-                        onPress={() => router.push({ pathname: "/chat", params: { bookingId: booking._id || booking.id } })}
+                <View
+                  key={booking._id || booking.id}
+                  style={styles.bookingCard}
+                >
+                  <View style={styles.bookingHeader}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (passengerId)
+                          router.push({
+                            pathname: "/user-profile/[id]",
+                            params: { id: passengerId },
+                          });
+                      }}
+                      activeOpacity={0.7}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <ProfileAvatar
+                        userId={passengerId}
+                        firstName={
+                          booking.passenger_first_name ||
+                          booking.passenger_id?.first_name ||
+                          booking.passenger?.first_name
+                        }
+                        lastName={
+                          booking.passenger_last_name ||
+                          booking.passenger_id?.last_name ||
+                          booking.passenger?.last_name
+                        }
+                        avatarUrl={
+                          booking.passenger_id?.avatar_url ||
+                          booking.passenger?.avatar_url
+                        }
+                        rating={
+                          booking.passenger_id?.rating ||
+                          booking.passenger?.rating
+                        }
+                        size="small"
+                        showRating
+                        disabled
+                      />
+                      <Text
+                        style={[styles.bookingPassenger, { color: "#3B82F6" }]}
                       >
-                        <Ionicons name="chatbubble-ellipses" size={16} color="#fff" />
-                        <Text style={styles.bookingActionText}> Chat</Text>
-                      </TouchableOpacity>
-                      
-                      {/* Call Button */}
-                      {(booking.passenger_phone ||
-                        booking.passenger_id?.phone ||
-                        booking.passenger?.phone_number) && (
-                        <TouchableOpacity 
-                          style={[styles.bookingActionBtn, { backgroundColor: '#10B981', flex: 1 }]}
-                          onPress={() => {
-                            const phone = booking.passenger_phone ||
-                              booking.passenger_id?.phone ||
-                              booking.passenger?.phone_number;
-                            Linking.openURL(`tel:${phone}`);
-                          }}
-                        >
-                          <Ionicons name="call" size={16} color="#fff" />
-                          <Text style={styles.bookingActionText}> Call</Text>
-                        </TouchableOpacity>
-                      )}
+                        {booking.passenger_first_name ||
+                          booking.passenger_id?.first_name ||
+                          booking.passenger?.first_name ||
+                          "Unknown"}{" "}
+                        {booking.passenger_last_name ||
+                          booking.passenger_id?.last_name ||
+                          booking.passenger?.last_name ||
+                          ""}
+                      </Text>
+                    </TouchableOpacity>
+                    <View
+                      style={[
+                        styles.bookingStatusBadge,
+                        booking.status === "accepted"
+                          ? styles.statusAccepted
+                          : booking.status === "rejected"
+                            ? styles.statusRejected
+                            : booking.status === "cancelled"
+                              ? styles.statusCancelled
+                              : styles.statusPending,
+                      ]}
+                    >
+                      <Text style={styles.bookingStatusText}>
+                        {booking.status === "accepted"
+                          ? "Confirmed"
+                          : booking.status}
+                      </Text>
                     </View>
                   </View>
-                )}
 
-                {/* Pending: Show Actions */}
-                {booking.status === "pending" && (
-                  <View style={styles.bookingActions}>
-                    <TouchableOpacity
-                      style={[styles.bookingActionBtn, styles.acceptBtn]}
-                      onPress={() => handleAccept(booking._id || booking.id)}
-                      disabled={actionId === (booking._id || booking.id)}
-                    >
-                      {actionId === (booking._id || booking.id) ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={styles.bookingActionText}>Accept</Text>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.bookingActionBtn, styles.rejectBtn]}
-                      onPress={() => handleReject(booking._id || booking.id)}
-                      disabled={actionId === (booking._id || booking.id)}
-                    >
-                      {actionId === (booking._id || booking.id) ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={styles.bookingActionText}>Reject</Text>
-                      )}
-                    </TouchableOpacity>
+                  {/* Common Details */}
+                  <View style={styles.passengerRow}>
+                    <Ionicons name="people-outline" size={16} color="#64748B" />
+                    <Text style={styles.bookingInfo}>
+                      {booking.seats || booking.seats_booked || 1} seat(s)
+                      requested
+                    </Text>
                   </View>
-                )}
-              </View>
-            );
+
+                  {/* Accepted: Show Phone and Chat */}
+                  {booking.status === "accepted" && (
+                    <View style={styles.passengerDetails}>
+                      <View style={styles.acceptedButtonsRow}>
+                        {/* Chat Button */}
+                        <TouchableOpacity
+                          style={[
+                            styles.bookingActionBtn,
+                            {
+                              backgroundColor: "#6366F1",
+                              flex: 1,
+                              marginRight: 8,
+                            },
+                          ]}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/chat",
+                              params: { bookingId: booking._id || booking.id },
+                            })
+                          }
+                        >
+                          <Ionicons
+                            name="chatbubble-ellipses"
+                            size={16}
+                            color="#fff"
+                          />
+                          <Text style={styles.bookingActionText}> Chat</Text>
+                        </TouchableOpacity>
+
+                        {/* Call Button */}
+                        {(booking.passenger_phone ||
+                          booking.passenger_id?.phone ||
+                          booking.passenger?.phone_number) && (
+                          <TouchableOpacity
+                            style={[
+                              styles.bookingActionBtn,
+                              { backgroundColor: "#10B981", flex: 1 },
+                            ]}
+                            onPress={() => {
+                              const phone =
+                                booking.passenger_phone ||
+                                booking.passenger_id?.phone ||
+                                booking.passenger?.phone_number;
+                              Linking.openURL(`tel:${phone}`);
+                            }}
+                          >
+                            <Ionicons name="call" size={16} color="#fff" />
+                            <Text style={styles.bookingActionText}> Call</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Pending: Show Actions */}
+                  {booking.status === "pending" && (
+                    <View style={styles.bookingActions}>
+                      <TouchableOpacity
+                        style={[styles.bookingActionBtn, styles.acceptBtn]}
+                        onPress={() => handleAccept(booking._id || booking.id)}
+                        disabled={actionId === (booking._id || booking.id)}
+                      >
+                        {actionId === (booking._id || booking.id) ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.bookingActionText}>Accept</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.bookingActionBtn, styles.rejectBtn]}
+                        onPress={() => handleReject(booking._id || booking.id)}
+                        disabled={actionId === (booking._id || booking.id)}
+                      >
+                        {actionId === (booking._id || booking.id) ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.bookingActionText}>Reject</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
             })}
           </View>
         )}
@@ -1044,6 +1165,10 @@ export default function RideDetailsScreen() {
                 Available: {ride.seats_left} seats
               </Text>
               <Text style={styles.modalInfoText}>
+                Luggage space: {ride.luggage_left ?? ride.luggage_capacity ?? 0}{" "}
+                / {ride.luggage_capacity ?? 0}
+              </Text>
+              <Text style={styles.modalInfoText}>
                 Price: {ride.price_per_seat} EUR per seat
               </Text>
             </View>
@@ -1059,6 +1184,17 @@ export default function RideDetailsScreen() {
               />
             </View>
 
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Number of Luggage</Text>
+              <TextInput
+                style={styles.input}
+                value={luggageCount}
+                onChangeText={setLuggageCount}
+                keyboardType="number-pad"
+                placeholder="0"
+              />
+            </View>
+
             <Text style={styles.totalPrice}>
               Total: {(parseFloat(seats) || 0) * ride.price_per_seat} EUR
             </Text>
@@ -1066,46 +1202,65 @@ export default function RideDetailsScreen() {
             {/* Payment Method Selection */}
             <View style={styles.paymentMethodSection}>
               <Text style={styles.paymentMethodTitle}>Payment Method</Text>
-              
+
               {/* Wallet Payment Option */}
               <TouchableOpacity
                 style={[
                   styles.paymentMethodOption,
-                  paymentMethod === 'wallet' && styles.paymentMethodSelected,
-                  (wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && styles.paymentMethodDisabled
+                  paymentMethod === "wallet" && styles.paymentMethodSelected,
+                  (wallet?.balance || 0) <
+                    (parseFloat(seats) || 1) *
+                      (ride?.price_per_seat || 0) *
+                      100 && styles.paymentMethodDisabled,
                 ]}
                 onPress={() => {
-                  const totalCents = (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100;
+                  const totalCents =
+                    (parseFloat(seats) || 1) *
+                    (ride?.price_per_seat || 0) *
+                    100;
                   if ((wallet?.balance || 0) >= totalCents) {
-                    setPaymentMethod('wallet');
+                    setPaymentMethod("wallet");
                   }
                 }}
-                disabled={(wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100}
+                disabled={
+                  (wallet?.balance || 0) <
+                  (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100
+                }
               >
                 <View style={styles.paymentMethodLeft}>
-                  <Ionicons 
-                    name="wallet" 
-                    size={24} 
-                    color={paymentMethod === 'wallet' ? '#16A34A' : '#64748B'} 
+                  <Ionicons
+                    name="wallet"
+                    size={24}
+                    color={paymentMethod === "wallet" ? "#16A34A" : "#64748B"}
                   />
                   <View style={styles.paymentMethodInfo}>
-                    <Text style={[
-                      styles.paymentMethodName,
-                      paymentMethod === 'wallet' && styles.paymentMethodNameSelected
-                    ]}>
+                    <Text
+                      style={[
+                        styles.paymentMethodName,
+                        paymentMethod === "wallet" &&
+                          styles.paymentMethodNameSelected,
+                      ]}
+                    >
                       Wallet Balance
                     </Text>
                     <Text style={styles.paymentMethodBalance}>
-                      Available: €{wallet?.balance_display || '0.00'}
+                      Available: €{wallet?.balance_display || "0.00"}
                     </Text>
                   </View>
                 </View>
-                {paymentMethod === 'wallet' && (
+                {paymentMethod === "wallet" && (
                   <View style={styles.paymentMethodCheck}>
-                    <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={24}
+                      color="#16A34A"
+                    />
                   </View>
                 )}
-                {(wallet?.balance || 0) >= (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && (
+                {(wallet?.balance || 0) >=
+                  (parseFloat(seats) || 1) *
+                    (ride?.price_per_seat || 0) *
+                    100 && (
                   <View style={styles.noFeeBadge}>
                     <Text style={styles.noFeeText}>No fees!</Text>
                   </View>
@@ -1113,9 +1268,15 @@ export default function RideDetailsScreen() {
               </TouchableOpacity>
 
               {/* Insufficient balance warning */}
-              {(wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && (
+              {(wallet?.balance || 0) <
+                (parseFloat(seats) || 1) *
+                  (ride?.price_per_seat || 0) *
+                  100 && (
                 <Text style={styles.insufficientBalanceText}>
-                  Insufficient wallet balance. Need €{((parseFloat(seats) || 1) * (ride?.price_per_seat || 0)).toFixed(2)}
+                  Insufficient wallet balance. Need €
+                  {(
+                    (parseFloat(seats) || 1) * (ride?.price_per_seat || 0)
+                  ).toFixed(2)}
                 </Text>
               )}
 
@@ -1123,21 +1284,24 @@ export default function RideDetailsScreen() {
               <TouchableOpacity
                 style={[
                   styles.paymentMethodOption,
-                  paymentMethod === 'card' && styles.paymentMethodSelected
+                  paymentMethod === "card" && styles.paymentMethodSelected,
                 ]}
-                onPress={() => setPaymentMethod('card')}
+                onPress={() => setPaymentMethod("card")}
               >
                 <View style={styles.paymentMethodLeft}>
-                  <Ionicons 
-                    name="card" 
-                    size={24} 
-                    color={paymentMethod === 'card' ? '#3B82F6' : '#64748B'} 
+                  <Ionicons
+                    name="card"
+                    size={24}
+                    color={paymentMethod === "card" ? "#3B82F6" : "#64748B"}
                   />
                   <View style={styles.paymentMethodInfo}>
-                    <Text style={[
-                      styles.paymentMethodName,
-                      paymentMethod === 'card' && styles.paymentMethodNameSelected
-                    ]}>
+                    <Text
+                      style={[
+                        styles.paymentMethodName,
+                        paymentMethod === "card" &&
+                          styles.paymentMethodNameSelected,
+                      ]}
+                    >
                       Credit/Debit Card
                     </Text>
                     <Text style={styles.paymentMethodBalance}>
@@ -1145,9 +1309,13 @@ export default function RideDetailsScreen() {
                     </Text>
                   </View>
                 </View>
-                {paymentMethod === 'card' && (
+                {paymentMethod === "card" && (
                   <View style={styles.paymentMethodCheck}>
-                    <Ionicons name="checkmark-circle" size={24} color="#3B82F6" />
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={24}
+                      color="#3B82F6"
+                    />
                   </View>
                 )}
               </TouchableOpacity>
@@ -1164,9 +1332,9 @@ export default function RideDetailsScreen() {
 
               <TouchableOpacity
                 style={[
-                  styles.modalButton, 
+                  styles.modalButton,
                   styles.modalButtonConfirm,
-                  paymentMethod === 'wallet' && styles.modalButtonWallet
+                  paymentMethod === "wallet" && styles.modalButtonWallet,
                 ]}
                 onPress={handleBooking}
                 disabled={isWalletPaying}
@@ -1175,7 +1343,9 @@ export default function RideDetailsScreen() {
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <Text style={styles.modalButtonConfirmText}>
-                    {paymentMethod === 'wallet' ? '💰 Pay with Wallet' : 'Pay with Card'}
+                    {paymentMethod === "wallet"
+                      ? "💰 Pay with Wallet"
+                      : "Pay with Card"}
                   </Text>
                 )}
               </TouchableOpacity>

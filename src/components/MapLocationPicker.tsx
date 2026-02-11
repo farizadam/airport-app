@@ -51,13 +51,15 @@ export default function MapLocationPicker({
   const debounceTimer = useRef<any>(null);
   const mapRef = useRef<LeafletMapRef>(null);
 
-  const [region, setRegion] = useState<{ latitude: number; longitude: number; zoom?: number } | undefined>(
+  const [region, setRegion] = useState<
+    { latitude: number; longitude: number; zoom?: number } | undefined
+  >(
     initialLocation
       ? {
           ...initialLocation,
-          zoom: 15
+          zoom: 15,
         }
-      : undefined
+      : undefined,
   );
   const [selectedLocation, setSelectedLocation] =
     useState<MapLocationData | null>(null);
@@ -83,23 +85,27 @@ export default function MapLocationPicker({
       setShowResults(false);
       // Removed: hasLocatedUser.current = false; // Do NOT reset this to prevent loops
 
-      if (initialLocation && initialLocation.latitude && initialLocation.longitude) {
+      if (
+        initialLocation &&
+        initialLocation.latitude &&
+        initialLocation.longitude
+      ) {
         setRegion({
-            latitude: initialLocation.latitude,
-            longitude: initialLocation.longitude,
-            zoom: 15
+          latitude: initialLocation.latitude,
+          longitude: initialLocation.longitude,
+          zoom: 15,
         });
         setTimeout(() => {
-           reverseGeocode(initialLocation.latitude, initialLocation.longitude);
-           setIsLoading(false);
+          reverseGeocode(initialLocation.latitude, initialLocation.longitude);
+          setIsLoading(false);
         }, 500);
       } else {
         // If no initial location, try to get user's current location - BUT ONLY ONCE
         if (!hasLocatedUser.current) {
-             hasLocatedUser.current = true;
-             setTimeout(() => getMyLocation(), 500);
+          hasLocatedUser.current = true;
+          setTimeout(() => getMyLocation(), 500);
         } else {
-            setIsLoading(false); // Stop loading if we already tried
+          setIsLoading(false); // Stop loading if we already tried
         }
       }
     }
@@ -136,22 +142,27 @@ export default function MapLocationPicker({
           headers: {
             "User-Agent": "MyAirportApp/1.0",
           },
-        }
+        },
       );
       const data = await response.json();
       if (data) {
-        setSearchResults(data.map((p: any) => ({
-          id: p.place_id.toString(),
-          description: p.display_name,
-          lat: p.lat,
-          lon: p.lon,
-          address: p.address,
-        })));
+        setSearchResults(
+          data.map((p: any) => ({
+            id: p.place_id.toString(),
+            description: p.display_name,
+            lat: p.lat,
+            lon: p.lon,
+            address: p.address,
+          })),
+        );
         setShowResults(true);
       }
     } catch (error) {
       console.error("Nominatim search error:", error);
-      toast.error("Search Error", "Could not fetch search results from OpenStreetMap.");
+      toast.error(
+        "Search Error",
+        "Could not fetch search results from OpenStreetMap.",
+      );
     } finally {
       setIsSearching(false);
     }
@@ -172,29 +183,35 @@ export default function MapLocationPicker({
       if (result.lat && result.lon) {
         const lat = parseFloat(result.lat);
         const lng = parseFloat(result.lon);
-        
+
         setRegion({
           latitude: lat,
           longitude: lng,
-          zoom: 16
+          zoom: 16,
         });
-        
+
         const address = result.address || {};
-        const city = address.city || address.town || address.village || address.municipality || address.county || "";
-        
+        const city =
+          address.city ||
+          address.town ||
+          address.village ||
+          address.municipality ||
+          address.county ||
+          "";
+
         setSelectedLocation({
-            address: result.description,
-            city: city,
-            postcode: address.postcode || "",
-            country: address.country || "",
-            latitude: lat,
-            longitude: lng,
+          address: result.description,
+          city: city,
+          postcode: address.postcode || "",
+          country: address.country || "",
+          latitude: lat,
+          longitude: lng,
         });
       }
     } catch (error) {
-       console.error("Nominatim selection error:", error);
+      console.error("Nominatim selection error:", error);
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -208,99 +225,128 @@ export default function MapLocationPicker({
       if (status !== "granted") {
         toast.warning(
           "Permission Denied",
-          "Please enable location permissions to use this feature."
+          "Please enable location permissions to use this feature.",
         );
         setIsGettingLocation(false);
         setIsLoading(false);
         return;
       }
-      
+
       let location = null;
       try {
         // Try Highest Accuracy first (Best for Huawei/Non-GMS to trigger hardware GPS)
         console.log("Trying High/BestForNavigation accuracy...");
-        location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+        location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Highest,
+        });
       } catch (err: any) {
         console.log("High accuracy failed, retrying with Lowest...", err);
         try {
-             location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+          location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Lowest,
+          });
         } catch (lowestErr: any) {
-             console.log("Lowest accuracy also failed.");
-             location = null;
+          console.log("Lowest accuracy also failed.");
+          location = null;
         }
       }
 
       if (location) {
         const { latitude, longitude } = location.coords;
         console.log(`Native GPS Location found: ${latitude}, ${longitude}`);
-        
+
         // Check if coordinates are valid (not 0, 0 which is invalid/null island)
         const isValidLocation = latitude !== 0 || longitude !== 0;
-        
-        if (isValidLocation && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+
+        if (
+          isValidLocation &&
+          Math.abs(latitude) <= 90 &&
+          Math.abs(longitude) <= 180
+        ) {
           setRegion({
-              latitude,
-              longitude,
-              zoom: 15
+            latitude,
+            longitude,
+            zoom: 15,
           });
           await reverseGeocode(latitude, longitude);
         } else {
-          console.log("GPS returned invalid coordinates (0, 0). Trying last known location...");
+          console.log(
+            "GPS returned invalid coordinates (0, 0). Trying last known location...",
+          );
           // Try to get last known location as fallback
           try {
             const lastKnown = await Location.getLastKnownPositionAsync();
-            if (lastKnown && (lastKnown.coords.latitude !== 0 || lastKnown.coords.longitude !== 0)) {
-              console.log(`Last known location: ${lastKnown.coords.latitude}, ${lastKnown.coords.longitude}`);
+            if (
+              lastKnown &&
+              (lastKnown.coords.latitude !== 0 ||
+                lastKnown.coords.longitude !== 0)
+            ) {
+              console.log(
+                `Last known location: ${lastKnown.coords.latitude}, ${lastKnown.coords.longitude}`,
+              );
               setRegion({
                 latitude: lastKnown.coords.latitude,
                 longitude: lastKnown.coords.longitude,
-                zoom: 15
+                zoom: 15,
               });
-              await reverseGeocode(lastKnown.coords.latitude, lastKnown.coords.longitude);
+              await reverseGeocode(
+                lastKnown.coords.latitude,
+                lastKnown.coords.longitude,
+              );
             } else {
               throw new Error("No valid last known location");
             }
           } catch (lastKnownErr) {
-            console.log("Last known location also failed. Defaulting to Paris.");
+            console.log(
+              "Last known location also failed. Defaulting to Paris.",
+            );
             const defaultLat = 48.8566;
             const defaultLon = 2.3522;
             setRegion({
-                latitude: defaultLat,
-                longitude: defaultLon,
-                zoom: 6
+              latitude: defaultLat,
+              longitude: defaultLon,
+              zoom: 6,
             });
-            toast.info("Location Unavailable", "GPS signal not found. Please search for your location or tap on the map.");
+            toast.info(
+              "Location Unavailable",
+              "GPS signal not found. Please search for your location or tap on the map.",
+            );
           }
         }
       } else {
-         console.log("All GPS methods failed. Defaulting to Paris.");
-         // Default to Paris, France
-         const defaultLat = 48.8566;
-         const defaultLon = 2.3522;
-         setRegion({
-             latitude: defaultLat,
-             longitude: defaultLon,
-             zoom: 6
-         });
-         toast.info("Location Unavailable", "GPS signal not found. Please select location manually.");
+        console.log("All GPS methods failed. Defaulting to Paris.");
+        // Default to Paris, France
+        const defaultLat = 48.8566;
+        const defaultLon = 2.3522;
+        setRegion({
+          latitude: defaultLat,
+          longitude: defaultLon,
+          zoom: 6,
+        });
+        toast.info(
+          "Location Unavailable",
+          "GPS signal not found. Please select location manually.",
+        );
       }
 
       setIsGettingLocation(false);
       setIsLoading(false);
-
     } catch (error: any) {
-        console.log("GPS error", error);
-        // Default to Paris
-         const defaultLat = 48.8566;
-         const defaultLon = 2.3522;
-         setRegion({
-             latitude: defaultLat,
-             longitude: defaultLon,
-             zoom: 6
-         });
-         toast.info("Location Unavailable", "GPS signal not found. Please select location manually.");
-         setIsGettingLocation(false);
-         setIsLoading(false);
+      console.log("GPS error", error);
+      // Default to Paris
+      const defaultLat = 48.8566;
+      const defaultLon = 2.3522;
+      setRegion({
+        latitude: defaultLat,
+        longitude: defaultLon,
+        zoom: 6,
+      });
+      toast.info(
+        "Location Unavailable",
+        "GPS signal not found. Please select location manually.",
+      );
+      setIsGettingLocation(false);
+      setIsLoading(false);
     }
   };
 
@@ -319,53 +365,95 @@ export default function MapLocationPicker({
 
   const reverseGeocodeNominatim = async (lat: number, lng: number) => {
     try {
-        const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
-            {
-              headers: { "User-Agent": "MyAirportApp/1.0" },
-            }
-          );
-          const data = await response.json();
-          if (data && data.address) {
-            const address = data.address;
-            const city = address.city || address.town || address.village || address.municipality || address.county || "";
-            
-            setSelectedLocation({
-              address: data.display_name,
-              city: city,
-              postcode: address.postcode || "",
-              country: address.country || "",
-              latitude: lat,
-              longitude: lng,
-            });
-          } else {
-             setSelectedLocation({
-                address: `Lat: ${lat.toFixed(5)}, Lon: ${lng.toFixed(5)}`,
-                city: "Unknown",
-                postcode: "",
-                country: "",
-                latitude: lat,
-                longitude: lng,
-            });
-          }
-    } catch(err) {
-        console.error("Nominatim Reverse Geocode Error", err);
+      const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "MyAirportApp/1.0" },
+      });
+
+      // If server returned non-2xx, read text and log to help diagnose (avoids JSON parse error)
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => "<unreadable>");
+        console.error(
+          `Nominatim reverse geocode HTTP ${response.status}: ${response.statusText}`,
+          bodyText,
+        );
+        throw new Error(`Nominatim HTTP ${response.status}`);
+      }
+
+      // Check content-type to avoid trying to parse HTML or other responses as JSON
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const bodyText = await response.text().catch(() => "<unreadable>");
+        console.error(
+          "Nominatim reverse geocode returned non-JSON response:",
+          contentType,
+          bodyText,
+        );
+        throw new Error("Nominatim returned non-JSON response");
+      }
+
+      // Safely parse JSON and fallback to text on parse failure
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        const raw = await response.text().catch(() => "<unreadable>");
+        console.error(
+          "Nominatim Reverse Geocode JSON parse error; raw response:",
+          raw,
+        );
+        throw parseErr;
+      }
+
+      if (data && data.address) {
+        const address = data.address;
+        const city =
+          address.city ||
+          address.town ||
+          address.village ||
+          address.municipality ||
+          address.county ||
+          "";
+
         setSelectedLocation({
-            address: `Lat: ${lat.toFixed(5)}, Lon: ${lng.toFixed(5)}`,
-            city: "Pin Location",
-            postcode: "",
-            country: "",
-            latitude: lat,
-            longitude: lng,
+          address: data.display_name,
+          city: city,
+          postcode: address.postcode || "",
+          country: address.country || "",
+          latitude: lat,
+          longitude: lng,
         });
+      } else {
+        setSelectedLocation({
+          address: `Lat: ${lat.toFixed(5)}, Lon: ${lng.toFixed(5)}`,
+          city: "Unknown",
+          postcode: "",
+          country: "",
+          latitude: lat,
+          longitude: lng,
+        });
+      }
+    } catch (err) {
+      console.error("Nominatim Reverse Geocode Error", err);
+      setSelectedLocation({
+        address: `Lat: ${lat.toFixed(5)}, Lon: ${lng.toFixed(5)}`,
+        city: "Pin Location",
+        postcode: "",
+        country: "",
+        latitude: lat,
+        longitude: lng,
+      });
     }
   };
 
   // Called when map moves in Leaflet
-  const onRegionChange = (newRegion: { latitude: number; longitude: number }) => {
+  const onRegionChange = (newRegion: {
+    latitude: number;
+    longitude: number;
+  }) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-        reverseGeocode(newRegion.latitude, newRegion.longitude);
+      reverseGeocode(newRegion.latitude, newRegion.longitude);
     }, 800);
   };
 
@@ -374,7 +462,7 @@ export default function MapLocationPicker({
       onSelectLocation(selectedLocation);
       onClose();
     } else {
-        toast.warning("No Location", "Please select a location on the map.");
+      toast.warning("No Location", "Please select a location on the map.");
     }
   };
 
@@ -405,7 +493,7 @@ export default function MapLocationPicker({
                 <Ionicons name="close-circle" size={20} color="#999" />
               </TouchableOpacity>
             )}
-             <TouchableOpacity
+            <TouchableOpacity
               style={styles.searchButton}
               onPress={handleSearch}
               disabled={isSearching}
@@ -419,22 +507,26 @@ export default function MapLocationPicker({
           </View>
           {showResults && (
             <View style={styles.searchResults}>
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.searchResultItem}
-                  onPress={() => selectSearchResult(item)}
-                >
-                  <Ionicons name="location-outline" size={18} color="#007AFF" />
-                  <Text style={styles.searchResultText} numberOfLines={2}>
-                    {item.description}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
+              <FlatList
+                data={searchResults}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.searchResultItem}
+                    onPress={() => selectSearchResult(item)}
+                  >
+                    <Ionicons
+                      name="location-outline"
+                      size={18}
+                      color="#007AFF"
+                    />
+                    <Text style={styles.searchResultText} numberOfLines={2}>
+                      {item.description}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
             </View>
           )}
         </View>
@@ -447,7 +539,7 @@ export default function MapLocationPicker({
             onRegionChange={onRegionChange}
             showCenterMarker={true}
           />
-           {isLoading && (
+          {isLoading && (
             <View style={styles.loadingOverlay}>
               <ActivityIndicator size="large" color="#007AFF" />
               <Text>Loading Map...</Text>
@@ -464,7 +556,6 @@ export default function MapLocationPicker({
           <Text style={styles.gpsButtonText}>Use My Current Location</Text>
         </TouchableOpacity>
 
-
         <View style={styles.bottomPanel}>
           {selectedLocation ? (
             <View style={styles.locationInfo}>
@@ -476,12 +567,16 @@ export default function MapLocationPicker({
                   {selectedLocation.address}
                 </Text>
               </View>
-              {(isReverseGeocoding || isGettingLocation) && <ActivityIndicator size="small" />}
+              {(isReverseGeocoding || isGettingLocation) && (
+                <ActivityIndicator size="small" />
+              )}
             </View>
           ) : (
-             <View style={styles.locationPlaceholder}>
+            <View style={styles.locationPlaceholder}>
               <Text style={styles.locationPlaceholderText}>
-                {isReverseGeocoding ? "Finding address..." : "Move map to choose location"}
+                {isReverseGeocoding
+                  ? "Finding address..."
+                  : "Move map to choose location"}
               </Text>
             </View>
           )}
@@ -534,7 +629,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e0e0e0",
     zIndex: 10,
   },
-    searchInputWrapper: {
+  searchInputWrapper: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f0f0f0",
@@ -608,11 +703,11 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     paddingVertical: 14,
     borderRadius: 12,
-    position: 'absolute',
+    position: "absolute",
     bottom: 160,
     right: 10,
-     elevation: 5,
-    shadowColor: '#000',
+    elevation: 5,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -629,7 +724,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: "#e0e0e0",
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -648,10 +743,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "gray",
   },
-   locationPlaceholder: {
+  locationPlaceholder: {
     paddingVertical: 16,
     marginBottom: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   locationPlaceholderText: {
     fontSize: 14,
@@ -663,8 +758,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     gap: 10,
   },
   confirmButtonDisabled: {

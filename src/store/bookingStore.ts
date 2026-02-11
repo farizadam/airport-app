@@ -1,6 +1,7 @@
 import api from "@/lib/api";
 import { Booking } from "@/types";
 import { create } from "zustand";
+import { useWalletStore } from "./walletStore";
 
 interface BookingState {
   myBookings: Booking[];
@@ -9,11 +10,19 @@ interface BookingState {
   getMyBookings: () => Promise<void>;
   getRideBookings: (rideId: string) => Promise<void>;
   createBooking: (
-    rideId: string, 
+    rideId: string,
     seats: number,
     luggage_count?: number,
-    pickup_location?: { address?: string; latitude?: number; longitude?: number },
-    dropoff_location?: { address?: string; latitude?: number; longitude?: number }
+    pickup_location?: {
+      address?: string;
+      latitude?: number;
+      longitude?: number;
+    },
+    dropoff_location?: {
+      address?: string;
+      latitude?: number;
+      longitude?: number;
+    },
   ) => Promise<Booking>;
   cancelBooking: (bookingId: string) => Promise<void>;
   acceptBooking: (bookingId: string) => Promise<void>;
@@ -32,11 +41,14 @@ export const useBookingStore = create<BookingState>((set) => ({
     try {
       set({ isLoading: true });
       const response = await api.get<{ data: Booking[] }>(
-        "/bookings/my-bookings"
+        "/bookings/my-bookings",
       );
       set({ myBookings: response.data.data });
     } catch (error: any) {
-      console.error("❌ Failed to fetch bookings:", error.response?.data || error.message);
+      console.error(
+        "❌ Failed to fetch bookings:",
+        error.response?.data || error.message,
+      );
       // Don't throw - just keep existing data so UI still works
     } finally {
       set({ isLoading: false });
@@ -48,33 +60,39 @@ export const useBookingStore = create<BookingState>((set) => ({
       set({ isLoading: true, rideBookings: [] }); // Clear previous bookings immediately
       console.log("Fetching ride bookings for ride:", rideId);
       const response = await api.get<{ data: Booking[] }>(
-        `/rides/${rideId}/bookings`
+        `/rides/${rideId}/bookings`,
       );
       console.log("Ride bookings response:", response.data);
       set({ rideBookings: response.data.data });
     } catch (error: any) {
       console.error(
         "Failed to get ride bookings:",
-        error.response?.data || error.message
+        error.response?.data || error.message,
       );
       throw new Error(
-        error.response?.data?.message || "Failed to get ride bookings"
+        error.response?.data?.message || "Failed to get ride bookings",
       );
     } finally {
       set({ isLoading: false });
     }
   },
 
-  createBooking: async (rideId, seats, luggage_count, pickup_location, dropoff_location) => {
+  createBooking: async (
+    rideId,
+    seats,
+    luggage_count,
+    pickup_location,
+    dropoff_location,
+  ) => {
     try {
       const response = await api.post<{ data: Booking }>(
         `/rides/${rideId}/bookings`,
-        { 
+        {
           seats,
           luggage_count: luggage_count || 0,
           pickup_location,
-          dropoff_location
-        }
+          dropoff_location,
+        },
       );
       const newBooking = response.data.data;
       set((state) => ({
@@ -83,7 +101,7 @@ export const useBookingStore = create<BookingState>((set) => ({
       return newBooking; // Return the created booking
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to create booking"
+        error.response?.data?.message || "Failed to create booking",
       );
     }
   },
@@ -93,15 +111,27 @@ export const useBookingStore = create<BookingState>((set) => ({
       await api.patch(`/bookings/${bookingId}`, { status: "cancelled" });
       set((state) => ({
         myBookings: state.myBookings.filter(
-          (booking) => booking.id !== bookingId
+          (booking) => booking.id !== bookingId,
         ),
         rideBookings: state.rideBookings.filter(
-          (booking) => booking.id !== bookingId
+          (booking) => booking.id !== bookingId,
         ),
       }));
+
+      // Refresh wallet to show refund
+      try {
+        const walletStore = useWalletStore.getState();
+        await walletStore.getWallet();
+        console.log("✅ Wallet refreshed after booking cancellation");
+      } catch (walletError) {
+        console.warn(
+          "⚠️ Failed to refresh wallet after cancellation:",
+          walletError,
+        );
+      }
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to cancel booking"
+        error.response?.data?.message || "Failed to cancel booking",
       );
     }
   },
@@ -112,7 +142,7 @@ export const useBookingStore = create<BookingState>((set) => ({
       console.log("Booking ID:", bookingId);
       const response = await api.patch<{ data: Booking }>(
         `/bookings/${bookingId}`,
-        { status: "accepted" }
+        { status: "accepted" },
       );
       console.log("Accept response:", JSON.stringify(response.data, null, 2));
       const updatedBooking = response.data.data;
@@ -121,17 +151,17 @@ export const useBookingStore = create<BookingState>((set) => ({
         rideBookings: state.rideBookings.map((booking) =>
           booking.id === bookingId || booking._id === bookingId
             ? { ...booking, status: "accepted" }
-            : booking
+            : booking,
         ),
       }));
       console.log("=== ACCEPT BOOKING END ===");
     } catch (error: any) {
       console.log(
         "Accept booking error:",
-        error.response?.data?.message || error.message
+        error.response?.data?.message || error.message,
       );
       throw new Error(
-        error.response?.data?.message || "Failed to accept booking"
+        error.response?.data?.message || "Failed to accept booking",
       );
     }
   },
@@ -140,19 +170,19 @@ export const useBookingStore = create<BookingState>((set) => ({
     try {
       const response = await api.patch<{ data: Booking }>(
         `/bookings/${bookingId}`,
-        { status: "rejected" }
+        { status: "rejected" },
       );
       // Update the local state
       set((state) => ({
         rideBookings: state.rideBookings.map((booking) =>
           booking.id === bookingId || booking._id === bookingId
             ? { ...booking, status: "rejected" }
-            : booking
+            : booking,
         ),
       }));
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to reject booking"
+        error.response?.data?.message || "Failed to reject booking",
       );
     }
   },

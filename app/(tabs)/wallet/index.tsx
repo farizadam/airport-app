@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { useWalletStore, Transaction } from "@/store/walletStore";
 import { toast } from "../../../src/store/toastStore";
 
@@ -36,11 +37,7 @@ export default function WalletScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      await Promise.all([
-        getWallet(),
-        getEarningsSummary(),
-        getBankStatus(),
-      ]);
+      await Promise.all([getWallet(), getEarningsSummary(), getBankStatus()]);
     } catch (err) {
       console.error("Error loading wallet data:", err);
     }
@@ -49,6 +46,13 @@ export default function WalletScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Refresh wallet when screen comes into focus (e.g., after cancellations on other tabs)
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -68,18 +72,21 @@ export default function WalletScreen() {
   const handleWithdraw = () => {
     if (!bankStatus?.connected || !bankStatus?.verified) {
       Alert.alert(
-        'Bank Account Required',
-        'Please connect and verify your bank account to withdraw funds.',
+        "Bank Account Required",
+        "Please connect and verify your bank account to withdraw funds.",
         [
-          { text: 'Cancel', style: "cancel" },
-          { text: 'Connect Bank', onPress: handleConnectBank },
-        ]
+          { text: "Cancel", style: "cancel" },
+          { text: "Connect Bank", onPress: handleConnectBank },
+        ],
       );
       return;
     }
 
     if (!wallet?.can_withdraw) {
-      toast.info("Minimum Balance Required", `You need at least ${wallet?.minimum_withdrawal_display || "5.00"} EUR to withdraw.`);
+      toast.info(
+        "Minimum Balance Required",
+        `You need at least ${wallet?.minimum_withdrawal_display || "5.00"} EUR to withdraw.`,
+      );
       return;
     }
 
@@ -139,7 +146,8 @@ export default function WalletScreen() {
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available Balance</Text>
           <Text style={styles.balanceAmount}>
-            {wallet?.balance_display || "0.00"} <Text style={styles.currency}>EUR</Text>
+            {wallet?.balance_display || "0.00"}{" "}
+            <Text style={styles.currency}>EUR</Text>
           </Text>
 
           {wallet && wallet.pending_balance > 0 && (
@@ -178,7 +186,9 @@ export default function WalletScreen() {
           <View style={styles.bankStatusCard}>
             <View style={styles.bankStatusRow}>
               <Ionicons
-                name={bankStatus?.verified ? "checkmark-circle" : "alert-circle"}
+                name={
+                  bankStatus?.verified ? "checkmark-circle" : "alert-circle"
+                }
                 size={24}
                 color={bankStatus?.verified ? "#16A34A" : "#F59E0B"}
               />

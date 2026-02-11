@@ -24,6 +24,7 @@ export default function RideDetailsScreen() {
   const { user } = useAuthStore();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [seats, setSeats] = useState("1");
+  const [luggageCount, setLuggageCount] = useState("0");
 
   useEffect(() => {
     if (id) {
@@ -46,8 +47,20 @@ export default function RideDetailsScreen() {
       return;
     }
 
+    const luggage = parseInt(luggageCount) || 0;
+    if (
+      luggage >
+      (currentRide?.luggage_left ?? currentRide?.luggage_capacity ?? 0)
+    ) {
+      Alert.alert(
+        "Error",
+        `Only ${currentRide?.luggage_left ?? currentRide?.luggage_capacity ?? 0} luggage spot(s) available`,
+      );
+      return;
+    }
+
     try {
-      await createBooking(id as string, parseInt(seats));
+      await createBooking(id as string, parseInt(seats), luggage);
       Alert.alert("Success", "Booking created successfully!");
       setBookingModalVisible(false);
       router.push("../bookings/index");
@@ -109,7 +122,7 @@ export default function RideDetailsScreen() {
               {currentRide.datetime_start
                 ? format(
                     new Date(currentRide.datetime_start.replace(" ", "T")),
-                    "MMM d, yyyy • HH:mm"
+                    "MMM d, yyyy • HH:mm",
                   )
                 : "N/A"}
             </Text>
@@ -213,6 +226,11 @@ export default function RideDetailsScreen() {
                 Available: {currentRide.seats_left} seats
               </Text>
               <Text style={styles.modalInfoText}>
+                Luggage space:{" "}
+                {currentRide.luggage_left ?? currentRide.luggage_capacity ?? 0}{" "}
+                spot(s)
+              </Text>
+              <Text style={styles.modalInfoText}>
                 Price: ${currentRide.price_per_seat} per seat
               </Text>
             </View>
@@ -225,6 +243,17 @@ export default function RideDetailsScreen() {
                 onChangeText={setSeats}
                 keyboardType="number-pad"
                 placeholder="1"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Number of Luggage</Text>
+              <TextInput
+                style={styles.input}
+                value={luggageCount}
+                onChangeText={setLuggageCount}
+                keyboardType="number-pad"
+                placeholder="0"
               />
             </View>
 

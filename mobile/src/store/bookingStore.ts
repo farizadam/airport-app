@@ -8,7 +8,11 @@ interface BookingState {
   isLoading: boolean;
   getMyBookings: () => Promise<void>;
   getRideBookings: (rideId: string) => Promise<void>;
-  createBooking: (rideId: string, seats: number) => Promise<void>;
+  createBooking: (
+    rideId: string,
+    seats: number,
+    luggage_count?: number,
+  ) => Promise<void>;
   cancelBooking: (bookingId: string) => Promise<void>;
   acceptBooking: (bookingId: string) => Promise<void>;
   rejectBooking: (bookingId: string) => Promise<void>;
@@ -23,12 +27,12 @@ export const useBookingStore = create<BookingState>((set) => ({
     try {
       set({ isLoading: true });
       const response = await api.get<{ data: Booking[] }>(
-        "/bookings/my-bookings"
+        "/bookings/my-bookings",
       );
       set({ myBookings: response.data.data });
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to get bookings"
+        error.response?.data?.message || "Failed to get bookings",
       );
     } finally {
       set({ isLoading: false });
@@ -39,30 +43,30 @@ export const useBookingStore = create<BookingState>((set) => ({
     try {
       set({ isLoading: true });
       const response = await api.get<{ data: Booking[] }>(
-        `/rides/${rideId}/bookings`
+        `/rides/${rideId}/bookings`,
       );
       set({ rideBookings: response.data.data });
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to get ride bookings"
+        error.response?.data?.message || "Failed to get ride bookings",
       );
     } finally {
       set({ isLoading: false });
     }
   },
 
-  createBooking: async (rideId, seats) => {
+  createBooking: async (rideId, seats, luggage_count) => {
     try {
       const response = await api.post<{ data: Booking }>(
         `/rides/${rideId}/bookings`,
-        { seats }
+        { seats, luggage_count: luggage_count || 0 },
       );
       set((state) => ({
         myBookings: [response.data.data, ...state.myBookings],
       }));
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to create booking"
+        error.response?.data?.message || "Failed to create booking",
       );
     }
   },
@@ -72,15 +76,15 @@ export const useBookingStore = create<BookingState>((set) => ({
       await api.delete(`/bookings/${bookingId}`);
       set((state) => ({
         myBookings: state.myBookings.filter(
-          (booking) => booking.id !== bookingId
+          (booking) => booking.id !== bookingId,
         ),
         rideBookings: state.rideBookings.filter(
-          (booking) => booking.id !== bookingId
+          (booking) => booking.id !== bookingId,
         ),
       }));
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to cancel booking"
+        error.response?.data?.message || "Failed to cancel booking",
       );
     }
   },
@@ -88,16 +92,16 @@ export const useBookingStore = create<BookingState>((set) => ({
   acceptBooking: async (bookingId) => {
     try {
       const response = await api.patch<{ data: Booking }>(
-        `/bookings/${bookingId}/accept`
+        `/bookings/${bookingId}/accept`,
       );
       set((state) => ({
         rideBookings: state.rideBookings.map((booking) =>
-          booking.id === bookingId ? response.data.data : booking
+          booking.id === bookingId ? response.data.data : booking,
         ),
       }));
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to accept booking"
+        error.response?.data?.message || "Failed to accept booking",
       );
     }
   },
@@ -105,16 +109,16 @@ export const useBookingStore = create<BookingState>((set) => ({
   rejectBooking: async (bookingId) => {
     try {
       const response = await api.patch<{ data: Booking }>(
-        `/bookings/${bookingId}/reject`
+        `/bookings/${bookingId}/reject`,
       );
       set((state) => ({
         rideBookings: state.rideBookings.map((booking) =>
-          booking.id === bookingId ? response.data.data : booking
+          booking.id === bookingId ? response.data.data : booking,
         ),
       }));
     } catch (error: any) {
       throw new Error(
-        error.response?.data?.message || "Failed to reject booking"
+        error.response?.data?.message || "Failed to reject booking",
       );
     }
   },
