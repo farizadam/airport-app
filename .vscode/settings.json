@@ -1,0 +1,7 @@
+{
+    "chat.agent.maxRequests": 100,
+    "geminicodeassist.agentDebugMode": true,
+    "geminicodeassist.agentYoloMode": true,
+    "geminicodeassist.verboseLogging": false,
+    "geminicodeassist.updateChannel": "Insiders"
+}

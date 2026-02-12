@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "name": "myapp-backend",
   "version": "1.0.0",
   "description": "Airport Carpooling Backend API",
@@ -40,11 +39,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
-=======
-  "dependencies": {
-    "@react-native-google-signin/google-signin": "^16.1.1",
-    "expo-auth-session": "^7.0.10",
-    "mongodb": "^7.1.0"
->>>>>>> d485976e5a47ff5fd7f4473a3de41cb247e7cf79
   }
 }

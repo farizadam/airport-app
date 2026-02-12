@@ -4,11 +4,7 @@
   "dev": true,
   "minify": false,
   "urlRandomness": null,
-<<<<<<< HEAD
   "https": false,
   "devClient": true,
   "scheme": null
-=======
-  "https": false
->>>>>>> d485976e5a47ff5fd7f4473a3de41cb247e7cf79
 }
