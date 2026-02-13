@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "879099107110",
+    "firebase_url": "https://airsaiid-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "airsaiid",
+    "storage_bucket": "airsaiid.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:879099107110:android:20ed58e72b60eaae2cd3e7",
+        "android_client_info": {
+          "package_name": "com.saidare.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAaw_-fuHLMIcRQd3qucvyEGdcwUuyNZmU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
