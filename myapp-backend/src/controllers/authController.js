@@ -4,6 +4,8 @@ const User = require("../models/User");
 const EmailOtp = require("../models/EmailOtp");
 const admin = require("../config/firebaseAdmin");
 const cloudinary = require("cloudinary").v2;
+const { loginOrRegisterWithGoogle, isProfileComplete } = require("../services/googleAuthService");
+const { loginOrRegisterWithFacebook } = require("../services/facebookAuthService");
 
 const SALT_ROUNDS = 10;
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
@@ -205,6 +207,8 @@ class AuthController {
       const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
       logStep("password_hash");
       const userCreateStart = Date.now();
+  // Also set profile_complete on normal registration
+      const profileComplete = !!(phoneNumber && front.url && back.url);
       const user = await User.create({
         email: emailNormalized,
         password_hash,
@@ -212,6 +216,8 @@ class AuthController {
         last_name,
         phone: phoneNumber,
         role,
+        auth_provider: "email",
+        profile_complete: profileComplete,
         firebase_uid: firebaseUid,
         phone_verified: !!firebaseUid,
         email_verified: true,
@@ -280,14 +286,131 @@ class AuthController {
     }
   }
 
-  // Placeholder for Google login (not implemented yet)
+  /**
+   * Google Login
+   * POST /api/v1/auth/google
+   */
   static async googleLogin(req, res, next) {
     try {
-      res
-        .status(501)
-        .json({ success: false, message: "Google login not implemented" });
+      const { id_token } = req.body;
+      if (!id_token) {
+        return res.status(400).json({ success: false, message: "Google id_token is required" });
+      }
+
+      const result = await loginOrRegisterWithGoogle(id_token);
+      res.status(200).json({
+        success: true,
+        message: result.profile_complete ? "Login successful" : "Login successful - profile incomplete",
+        data: result,
+      });
     } catch (err) {
+      console.error("Google login error:", err.message);
+      if (err.message.includes("Invalid") || err.message.includes("unverified")) {
+        return res.status(401).json({ success: false, message: err.message });
+      }
       next(err);
+    }
+  }
+
+  /**
+   * Facebook Login
+   * POST /api/v1/auth/facebook
+   */
+  static async facebookLogin(req, res, next) {
+    try {
+      const { access_token } = req.body;
+      if (!access_token) {
+        return res.status(400).json({ success: false, message: "Facebook access_token is required" });
+      }
+
+      const result = await loginOrRegisterWithFacebook(access_token);
+      res.status(200).json({
+        success: true,
+        message: result.profile_complete ? "Login successful" : "Login successful - profile incomplete",
+        data: result,
+      });
+    } catch (err) {
+      console.error("Facebook login error:", err.message);
+      if (err.message.includes("Invalid")) {
+        return res.status(401).json({ success: false, message: err.message });
+      }
+      next(err);
+    }
+  }
+
+  /**
+   * Complete Profile (for social login users who need to add phone + ID)
+   * POST /api/v1/auth/complete-profile
+   * Requires auth middleware
+   */
+  static async completeProfile(req, res, next) {
+    try {
+      const { phone, firebase_token, id_image_front, id_image_back } = req.body;
+      const userId = req.user.id;
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      // Verify phone via Firebase if token provided
+      let phoneNumber = phone;
+      if (firebase_token) {
+        try {
+          const decoded = await admin.auth().verifyIdToken(firebase_token);
+          if (decoded.phone_number) {
+            phoneNumber = decoded.phone_number;
+            user.firebase_uid = decoded.uid;
+            user.phone_verified = true;
+          }
+        } catch (err) {
+          return res.status(401).json({ success: false, message: "Invalid firebase token" });
+        }
+      }
+
+      // Update phone
+      if (phoneNumber) {
+        // Check for duplicate phone
+        const phoneExists = await User.findOne({ phone: phoneNumber, _id: { $ne: userId }, deleted_at: null });
+        if (phoneExists) {
+          return res.status(409).json({ success: false, message: "Phone number already in use" });
+        }
+        user.phone = phoneNumber;
+      }
+
+      // Process ID images
+      if (id_image_front) {
+        try {
+          const frontResult = await AuthController.processImage(id_image_front);
+          user.id_image_front_url = frontResult.url;
+          user.id_image_front_public_id = frontResult.public_id;
+        } catch (imgErr) {
+          return res.status(400).json({ success: false, message: "Front ID: " + imgErr.message });
+        }
+      }
+
+      if (id_image_back) {
+        try {
+          const backResult = await AuthController.processImage(id_image_back);
+          user.id_image_back_url = backResult.url;
+          user.id_image_back_public_id = backResult.public_id;
+        } catch (imgErr) {
+          return res.status(400).json({ success: false, message: "Back ID: " + imgErr.message });
+        }
+      }
+
+      // Check if profile is now complete
+      user.profile_complete = isProfileComplete(user);
+      await user.save();
+
+      const safeUser = user.toJSON();
+      res.status(200).json({
+        success: true,
+        message: "Profile updated successfully",
+        data: { user: safeUser, profile_complete: user.profile_complete },
+      });
+    } catch (error) {
+      next(error);
     }
   }
 

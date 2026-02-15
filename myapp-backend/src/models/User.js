@@ -51,7 +51,8 @@ const userSchema = new mongoose.Schema(
     },
     password_hash: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
     },
     first_name: {
       type: String,
@@ -65,7 +66,8 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
     },
     date_of_birth: {
       type: Date,
@@ -84,6 +86,29 @@ const userSchema = new mongoose.Schema(
     avatar_public_id: {
       type: String,
       default: null,
+    },
+    google_id: {
+      type: String,
+      default: null,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    facebook_id: {
+      type: String,
+      default: null,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    auth_provider: {
+      type: String,
+      enum: ["email", "google", "facebook"],
+      default: "email",
+    },
+    profile_complete: {
+      type: Boolean,
+      default: false,
     },
     firebase_uid: {
       type: String,

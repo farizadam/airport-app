@@ -86,20 +86,78 @@ walletSchema.methods.addPendingEarnings = async function (amount) {
 };
 
 // Method to withdraw funds
-walletSchema.methods.withdraw = async function (amount) {
+walletSchema.methods.withdraw = async function (amount, session = null) {
   if (amount > this.balance) {
     throw new Error("Insufficient balance");
   }
   this.balance -= amount;
   this.total_withdrawn += amount;
-  return this.save();
+  const saveOptions = session ? { session } : {};
+  return this.save(saveOptions);
 };
 
 // Method to refund (add back after failed payout)
-walletSchema.methods.refundWithdrawal = async function (amount) {
+walletSchema.methods.refundWithdrawal = async function (amount, session = null) {
   this.balance += amount;
   this.total_withdrawn -= amount;
-  return this.save();
+  const saveOptions = session ? { session } : {};
+  return this.save(saveOptions);
+};
+
+/**
+ * Atomic withdraw using findOneAndUpdate (race-condition safe)
+ * Only deducts if balance is sufficient - uses MongoDB's atomic operation
+ * Returns the updated wallet or null if insufficient balance
+ */
+walletSchema.statics.atomicWithdraw = async function (walletId, amount, session = null) {
+  const options = { new: true };
+  if (session) options.session = session;
+
+  const result = await this.findOneAndUpdate(
+    {
+      _id: walletId,
+      balance: { $gte: amount }, // Only update if balance is sufficient
+    },
+    {
+      $inc: {
+        balance: -amount,
+        total_withdrawn: amount,
+      },
+    },
+    options
+  );
+
+  if (!result) {
+    throw new Error("Insufficient balance or wallet not found");
+  }
+
+  return result;
+};
+
+/**
+ * Atomic refund using findOneAndUpdate (race-condition safe)
+ * Safely returns money on failed withdrawal
+ */
+walletSchema.statics.atomicRefund = async function (walletId, amount, session = null) {
+  const options = { new: true };
+  if (session) options.session = session;
+
+  const result = await this.findOneAndUpdate(
+    { _id: walletId },
+    {
+      $inc: {
+        balance: amount,
+        total_withdrawn: -amount,
+      },
+    },
+    options
+  );
+
+  if (!result) {
+    throw new Error("Wallet not found for refund");
+  }
+
+  return result;
 };
 
 const Wallet = mongoose.model("Wallet", walletSchema);

@@ -5,6 +5,7 @@ const Payout = require("../models/Payout");
 const Booking = require("../models/Booking");
 const Ride = require("../models/Ride");
 const User = require("../models/User");
+const ProcessedWebhook = require("../models/ProcessedWebhook");
 
 /**
  * POST /api/v1/stripe/webhook
@@ -12,6 +13,9 @@ const User = require("../models/User");
  * 
  * IMPORTANT: This endpoint should NOT use express.json() middleware
  * It needs the raw body to verify the webhook signature
+ * 
+ * MONEY SAFETY: Uses ProcessedWebhook model for idempotency.
+ * Every event is checked/recorded to prevent double-processing.
  */
 exports.handleWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
@@ -27,7 +31,21 @@ exports.handleWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  console.log(`Received Stripe webhook: ${event.type}`);
+  console.log(`Received Stripe webhook: ${event.type} (${event.id})`);
+
+  // ===== IDEMPOTENCY CHECK =====
+  // If we've already processed this exact event, skip it.
+  // This prevents double-credits, double-refunds, etc.
+  try {
+    const alreadyProcessed = await ProcessedWebhook.isProcessed(event.id);
+    if (alreadyProcessed) {
+      console.log(`Webhook ${event.id} already processed, skipping`);
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+  } catch (idempotencyError) {
+    // If idempotency check fails, still process (better to risk double than to lose)
+    console.error("Idempotency check failed:", idempotencyError.message);
+  }
 
   try {
     switch (event.type) {
@@ -63,9 +81,16 @@ exports.handleWebhook = async (req, res) => {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
+    // Mark event as successfully processed
+    await ProcessedWebhook.markProcessed(event.id, event.type, "success");
+
     res.status(200).json({ received: true });
   } catch (error) {
-    console.error(`Error handling webhook ${event.type}:`, error);
+    console.error(`Error handling webhook ${event.type} (${event.id}):`, error);
+
+    // Mark event as errored (so we know it was attempted but failed)
+    await ProcessedWebhook.markError(event.id, event.type, error.message).catch(() => {});
+
     res.status(500).json({ error: "Webhook handler failed" });
   }
 };
@@ -224,10 +249,20 @@ async function handlePayoutFailed(payout) {
       payout.failure_code
     );
 
-    // Refund the wallet
-    const wallet = await Wallet.findById(payoutRecord.wallet_id);
-    if (wallet) {
-      await wallet.refundWithdrawal(payoutRecord.amount);
+    // Refund the wallet using atomic operation (race-condition safe)
+    try {
+      await Wallet.atomicRefund(payoutRecord.wallet_id, payoutRecord.amount);
+      console.log(`Payout ${payout.id} failed, wallet refunded atomically (${payoutRecord.amount} cents)`);
+    } catch (refundError) {
+      console.error(`CRITICAL: Failed to refund wallet for payout ${payout.id}:`, refundError.message);
+      // Mark payout with manual refund needed flag
+      payoutRecord.metadata = {
+        ...payoutRecord.metadata,
+        needs_manual_refund: true,
+        refund_amount: payoutRecord.amount,
+        refund_error: refundError.message,
+      };
+      await payoutRecord.save();
     }
 
     // Update transaction
@@ -241,8 +276,6 @@ async function handlePayoutFailed(payout) {
         },
       }
     );
-
-    console.log(`Payout ${payout.id} failed, wallet refunded`);
   }
 }
 
@@ -287,12 +320,21 @@ async function handleChargeRefunded(charge) {
   const feePercentage = originalTransaction.fee_percentage || 10;
   const driverRefund = Math.round(refundAmount * ((100 - feePercentage) / 100));
 
-  // Deduct from driver's wallet
+  // Deduct from driver's wallet using atomic operation
   const wallet = await Wallet.findById(originalTransaction.wallet_id);
   if (wallet && wallet.balance >= driverRefund) {
-    wallet.balance -= driverRefund;
-    wallet.total_earned -= driverRefund;
-    await wallet.save();
+    await Wallet.findOneAndUpdate(
+      {
+        _id: originalTransaction.wallet_id,
+        balance: { $gte: driverRefund }, // Only deduct if balance sufficient
+      },
+      {
+        $inc: {
+          balance: -driverRefund,
+          total_earned: -driverRefund,
+        },
+      }
+    );
 
     // Create refund transaction
     await Transaction.create({

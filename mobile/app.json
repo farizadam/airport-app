@@ -20,6 +20,10 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.saidare.mobile"
@@ -32,6 +36,24 @@
       "expo-router",
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.879099107110-lejrhsdurdl1ib4nitnj30k98hir2q5n"
+        }
+      ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "34107866202160782",
+          "clientToken": "YOUR_FACEBOOK_CLIENT_TOKEN",
+          "displayName": "CovoitAir",
+          "scheme": "fb34107866202160782",
+          "advertiserIDCollectionEnabled": false,
+          "autoLogAppEventsEnabled": false,
+          "isAutoInitEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -52,7 +74,9 @@
           "locationAlwaysPermission": "Allow $(PRODUCT_NAME) to use your location.",
           "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location when the app is open."
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin",
+      "react-native-fbsdk-next"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -64,6 +88,13 @@
         "projectId": "2d0bd523-8a89-4713-810b-ad6574933ec0"
       }
     },
-    "owner": "saiid"
+    "owner": "saiid",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2d0bd523-8a89-4713-810b-ad6574933ec0"
+    },
+    "ios": {}
   }
 }

@@ -9,12 +9,10 @@ interface AuthState {
   isLoading: boolean;
   setUser: (user: User | null) => void;
   setLoading: (loading: boolean) => void;
-  login: (email: string, password?: string) => Promise<void>;
-  loginWithGoogle: (
-    user: User,
-    accessToken: string,
-    refreshToken: string,
-  ) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<{ profile_complete: boolean }>;
+  loginWithFacebook: (accessToken: string) => Promise<{ profile_complete: boolean }>;
+  completeProfile: (data: CompleteProfileData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   loadUser: () => Promise<void>;
@@ -30,6 +28,13 @@ interface RegisterData {
   role: "driver" | "passenger" | "both";
 }
 
+interface CompleteProfileData {
+  phone?: string;
+  firebase_token?: string;
+  id_image_front?: string;
+  id_image_back?: string;
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
@@ -41,11 +46,6 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   login: async (email, password) => {
     try {
-      if (!password) {
-        // Google login fallback: just set user as authenticated (already handled by loginWithGoogle)
-        set({ user: { email } as User, isAuthenticated: true });
-        return;
-      }
       const response = await api.post("/auth/login", { email, password });
       const { user, accessToken, refreshToken } = response.data.data;
       await SecureStore.setItemAsync("accessToken", accessToken);
@@ -56,10 +56,40 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  loginWithGoogle: async (user, accessToken, refreshToken) => {
-    await SecureStore.setItemAsync("accessToken", accessToken);
-    await SecureStore.setItemAsync("refreshToken", refreshToken);
-    set({ user, isAuthenticated: true });
+  loginWithGoogle: async (idToken) => {
+    try {
+      const response = await api.post("/auth/google", { id_token: idToken });
+      const { user, accessToken, refreshToken, profile_complete } = response.data.data;
+      await SecureStore.setItemAsync("accessToken", accessToken);
+      await SecureStore.setItemAsync("refreshToken", refreshToken);
+      set({ user, isAuthenticated: true });
+      return { profile_complete };
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Google login failed");
+    }
+  },
+
+  loginWithFacebook: async (accessToken) => {
+    try {
+      const response = await api.post("/auth/facebook", { access_token: accessToken });
+      const { user, accessToken: at, refreshToken, profile_complete } = response.data.data;
+      await SecureStore.setItemAsync("accessToken", at);
+      await SecureStore.setItemAsync("refreshToken", refreshToken);
+      set({ user, isAuthenticated: true });
+      return { profile_complete };
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Facebook login failed");
+    }
+  },
+
+  completeProfile: async (data) => {
+    try {
+      const response = await api.post("/auth/complete-profile", data);
+      const { user } = response.data.data;
+      set({ user });
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Failed to complete profile");
+    }
   },
 
   register: async (data) => {
@@ -115,15 +145,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         } catch (apiError: any) {
           console.error("Failed to fetch user data:", apiError);
 
-          // Only clear tokens if it's an authentication error (401)
-          // Keep tokens for network errors so user can retry when backend is available
           if (apiError.response?.status === 401) {
             await SecureStore.deleteItemAsync("accessToken");
             await SecureStore.deleteItemAsync("refreshToken");
             set({ user: null, isAuthenticated: false });
           } else {
-            // Network error - keep the tokens but mark as not authenticated for now
-            // User can retry or the app will try again
             console.log("Network error - keeping tokens for retry");
             set({ user: null, isAuthenticated: false });
           }

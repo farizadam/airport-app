@@ -5,13 +5,22 @@ import { Platform } from "react-native";
 
 // Determine API URL based on platform and environment
 const getApiBaseUrl = (): string => {
+  // PRODUCTION URL - Always use this for builds distributed to clients
+  const PRODUCTION_URL = "https://airport-app-production.up.railway.app/api/v1";
+  
   // 1. Manual: If specific env var is set, use it (Good for Production)
   if (process.env.EXPO_PUBLIC_API_BASE_URL) {
     console.log("Using API URL from .env:", process.env.EXPO_PUBLIC_API_BASE_URL);
     return process.env.EXPO_PUBLIC_API_BASE_URL;
   }
 
-  // 2. Special handling for Android Emulator
+  // 2. For development builds, always use production URL (works on any WiFi)
+  if (!__DEV__) {
+    console.log("Production build: Using production URL");
+    return PRODUCTION_URL;
+  }
+
+  // 3. Special handling for Android Emulator (Dev only)
   // Use 10.0.2.2 which is the special IP for the host machine from the emulator
   // This avoids needing to run 'adb reverse' manually every time
   if (Platform.OS === "android" && !Constants.isDevice) {
@@ -19,15 +28,16 @@ const getApiBaseUrl = (): string => {
     return "http://10.0.2.2:3000/api/v1";
   }
 
-  // 3. Automatic: Use the computer's IP address detected by Expo
+  // 4. Automatic: Use the computer's IP address detected by Expo (Dev only)
   if (Constants.expoConfig?.hostUri) {
     const host = Constants.expoConfig.hostUri.split(':')[0];
     console.log("Using auto-detected IP:", host);
     return `http://${host}:3000/api/v1`;
   }
 
-  // 4. Fallback to localhost (Web, iOS Simulator)
-  return "http://localhost:3000/api/v1";
+  // 5. Fallback to production for any other case
+  console.log("Fallback: Using production URL");
+  return PRODUCTION_URL;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -51,7 +61,7 @@ api.interceptors.request.use(
       "API Request - URL:",
       config.url,
       "Full:",
-      config.baseURL + config.url
+      (config.baseURL || '') + (config.url || '')
     );
     const token = await SecureStore.getItemAsync("accessToken");
     if (token) {

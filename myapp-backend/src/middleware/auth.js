@@ -56,6 +56,10 @@ async function authMiddleware(req, res, next) {
       rating_count: user.rating_count,
       phone_verified: user.phone_verified,
       email_verified: user.email_verified,
+      auth_provider: user.auth_provider,
+      google_id: user.google_id,
+      facebook_id: user.facebook_id,
+      profile_complete: user.profile_complete,
       createdAt: user.createdAt,
     };
     return next();

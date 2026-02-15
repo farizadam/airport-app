@@ -5,6 +5,7 @@ require("dotenv").config();
 const { connectDB } = require("./src/config/database");
 const app = require("./src/app");
 const RatingSchedulerService = require("./src/services/ratingSchedulerService");
+const { startReconciliationScheduler } = require("./src/services/payoutReconciliationService");
 const mongoose = require("mongoose");
 
 // 3. Define the Port
@@ -22,6 +23,9 @@ async function startServer() {
 
     // Start the rating notification scheduler
     RatingSchedulerService.start();
+
+    // Start the payout reconciliation scheduler (safety net for stuck payouts)
+    startReconciliationScheduler();
 
     // Start Express server
     app.listen(PORT, () => {

@@ -2,6 +2,7 @@ const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
 const Payout = require("../models/Payout");
 const User = require("../models/User");
+const mongoose = require("mongoose");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 // Minimum withdrawal amount in cents (5.00 EUR)
@@ -142,8 +143,25 @@ exports.getPayouts = async (req, res, next) => {
  * POST /api/v1/wallet/withdraw
  * Request a withdrawal to bank account
  * Body: { amount } - amount in cents, or { amount_eur } - amount in EUR
+ * 
+ * MONEY SAFETY: This uses MongoDB sessions for atomicity.
+ * Flow:
+ *   1. Validate input + check balance/bank/pending
+ *   2. START TRANSACTION
+ *      a. Atomically deduct wallet balance
+ *      b. Create payout record
+ *      c. Create transaction record
+ *   3. COMMIT TRANSACTION
+ *   4. Attempt Stripe transfer (outside transaction — Stripe is external)
+ *   5. On Stripe failure: atomically refund wallet + mark payout failed
+ *   6. On Stripe timeout: verify transfer exists before deciding refund vs confirm
  */
 exports.requestWithdrawal = async (req, res, next) => {
+  let session = null;
+  let payout = null;
+  let transaction = null;
+  let walletAfterWithdraw = null;
+
   try {
     const userId = req.user.id;
     let { amount, amount_eur } = req.body;
@@ -210,31 +228,87 @@ exports.requestWithdrawal = async (req, res, next) => {
       });
     }
 
-    // Create payout request in database
-    const payout = await Payout.createPayoutRequest({
-      user_id: userId,
-      wallet_id: wallet._id,
-      amount,
-      payout_method: "standard",
-    });
-
-    // Deduct from wallet
-    await wallet.withdraw(amount);
-
-    // Create transaction record
-    const transaction = await Transaction.createWithdrawal({
-      wallet_id: wallet._id,
-      user_id: userId,
-      amount,
-      payout_id: payout._id,
-    });
-
-    // Update payout with transaction reference
-    payout.transaction_id = transaction._id;
-    await payout.save();
+    // ===== PHASE 1: ATOMIC DATABASE OPERATIONS =====
+    // Use MongoDB session to ensure wallet deduction, payout creation, and
+    // transaction creation either ALL succeed or ALL roll back.
+    session = await mongoose.startSession();
+    session.startTransaction();
 
     try {
-      // Create Stripe Transfer to connected account
+      // 1a. Atomically deduct from wallet (uses $gte check — race-condition safe)
+      walletAfterWithdraw = await Wallet.atomicWithdraw(wallet._id, amount, session);
+
+      // 1b. Create payout record within transaction
+      const [payoutDoc] = await Payout.create(
+        [
+          {
+            user_id: userId,
+            wallet_id: wallet._id,
+            amount,
+            payout_method: "standard",
+            estimated_arrival: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+            requested_at: new Date(),
+          },
+        ],
+        { session }
+      );
+      payout = payoutDoc;
+
+      // 1c. Create transaction record within transaction
+      const [txDoc] = await Transaction.create(
+        [
+          {
+            wallet_id: wallet._id,
+            user_id: userId,
+            type: "withdrawal",
+            amount: -amount,
+            gross_amount: amount,
+            fee_amount: 0,
+            net_amount: amount,
+            status: "pending",
+            reference_type: "payout",
+            reference_id: payout._id,
+            description: "Withdrawal to bank account",
+            processed_at: null,
+          },
+        ],
+        { session }
+      );
+      transaction = txDoc;
+
+      // 1d. Link transaction to payout
+      payout.transaction_id = transaction._id;
+      await payout.save({ session });
+
+      // COMMIT — all 3 database changes are now permanent
+      await session.commitTransaction();
+      session.endSession();
+      session = null;
+
+      console.log(`[WITHDRAW] Phase 1 complete: wallet deducted, payout ${payout._id} created for user ${userId}`);
+    } catch (dbError) {
+      // ABORT — nothing was changed in the database
+      if (session) {
+        await session.abortTransaction();
+        session.endSession();
+        session = null;
+      }
+      console.error("[WITHDRAW] Phase 1 failed (DB transaction aborted):", dbError.message);
+
+      if (dbError.message === "Insufficient balance or wallet not found") {
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient balance",
+        });
+      }
+      throw dbError;
+    }
+
+    // ===== PHASE 2: STRIPE TRANSFER (outside DB transaction) =====
+    // At this point, wallet is deducted and payout exists as "pending".
+    // If the server crashes here, the reconciliation job will detect the
+    // stuck "pending" payout and either complete or refund it.
+    try {
       const transfer = await stripe.transfers.create({
         amount: amount,
         currency: "eur",
@@ -245,18 +319,18 @@ exports.requestWithdrawal = async (req, res, next) => {
         },
       });
 
-      // Update payout with Stripe ID
+      // Update payout with Stripe transfer ID
       await payout.markProcessing(null, transfer.id);
 
-      // Update transaction
+      // Update transaction to completed
       transaction.stripe_transfer_id = transfer.id;
       transaction.status = "completed";
       transaction.processed_at = new Date();
       await transaction.save();
 
-      console.log(`Withdrawal initiated: ${amount} cents to user ${userId}, transfer ${transfer.id}`);
+      console.log(`[WITHDRAW] Phase 2 complete: Stripe transfer ${transfer.id} for payout ${payout._id}`);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: "Withdrawal initiated successfully",
         data: {
@@ -264,34 +338,119 @@ exports.requestWithdrawal = async (req, res, next) => {
             id: payout._id,
             amount: payout.amount,
             amount_display: (payout.amount / 100).toFixed(2),
-            status: payout.status,
+            status: "processing",
             estimated_arrival: payout.estimated_arrival,
           },
-          new_balance: wallet.balance,
-          new_balance_display: (wallet.balance / 100).toFixed(2),
+          new_balance: walletAfterWithdraw.balance,
+          new_balance_display: (walletAfterWithdraw.balance / 100).toFixed(2),
         },
       });
     } catch (stripeError) {
-      console.error("Stripe transfer error:", stripeError);
+      console.error(`[WITHDRAW] Stripe transfer failed for payout ${payout._id}:`, stripeError.message);
 
-      // Refund the wallet
-      await wallet.refundWithdrawal(amount);
+      // ===== TIMEOUT / NETWORK ERROR: Verify before refunding =====
+      // On timeout or network errors, the transfer might have actually been created.
+      // We MUST check Stripe before refunding, or we risk giving the user money twice.
+      if (
+        stripeError.type === "StripeConnectionError" ||
+        stripeError.code === "ETIMEDOUT" ||
+        stripeError.code === "ECONNRESET" ||
+        stripeError.code === "ECONNREFUSED"
+      ) {
+        console.log(`[WITHDRAW] Network error — checking Stripe for existing transfers for payout ${payout._id}`);
+        try {
+          // Search for transfers that may have been created
+          const transfers = await stripe.transfers.list({
+            limit: 5,
+            destination: user.stripeAccountId,
+          });
 
-      // Mark payout as failed
-      await payout.markFailed(stripeError.message, stripeError.code);
+          const matchingTransfer = transfers.data.find(
+            (t) => t.metadata?.payout_id === payout._id.toString()
+          );
 
-      // Update transaction
-      transaction.status = "failed";
-      transaction.metadata = { error: stripeError.message };
-      await transaction.save();
+          if (matchingTransfer) {
+            // Transfer WAS created on Stripe — do NOT refund, mark as processing
+            console.log(`[WITHDRAW] Transfer found on Stripe despite error: ${matchingTransfer.id}`);
+            await payout.markProcessing(null, matchingTransfer.id);
+            transaction.stripe_transfer_id = matchingTransfer.id;
+            transaction.status = "completed";
+            transaction.processed_at = new Date();
+            await transaction.save();
+
+            return res.status(200).json({
+              success: true,
+              message: "Withdrawal initiated successfully (recovered from network issue)",
+              data: {
+                payout: {
+                  id: payout._id,
+                  amount: payout.amount,
+                  amount_display: (payout.amount / 100).toFixed(2),
+                  status: "processing",
+                  estimated_arrival: payout.estimated_arrival,
+                },
+                new_balance: walletAfterWithdraw.balance,
+                new_balance_display: (walletAfterWithdraw.balance / 100).toFixed(2),
+              },
+            });
+          }
+          // No matching transfer found — safe to refund
+          console.log(`[WITHDRAW] No matching transfer found on Stripe — proceeding with refund`);
+        } catch (verifyError) {
+          // Cannot verify — mark payout as "pending" for manual/cron review
+          console.error(`[WITHDRAW] Cannot verify Stripe transfer, leaving payout ${payout._id} as pending for reconciliation:`, verifyError.message);
+          payout.failure_reason = `Stripe error: ${stripeError.message}. Verification failed: ${verifyError.message}`;
+          payout.metadata = { needs_reconciliation: true, stripe_error: stripeError.message };
+          await payout.save();
+
+          return res.status(202).json({
+            success: false,
+            message: "Withdrawal is being processed. We will verify and update you shortly.",
+            data: {
+              payout_id: payout._id,
+              status: "pending",
+            },
+          });
+        }
+      }
+
+      // ===== DEFINITE FAILURE: Refund wallet atomically =====
+      try {
+        await Wallet.atomicRefund(wallet._id, amount);
+        await payout.markFailed(stripeError.message, stripeError.code);
+        transaction.status = "failed";
+        transaction.metadata = { error: stripeError.message, error_code: stripeError.code };
+        await transaction.save();
+
+        console.log(`[WITHDRAW] Refunded ${amount} cents to wallet for failed payout ${payout._id}`);
+      } catch (refundError) {
+        // CRITICAL: Wallet deducted but refund failed — needs manual intervention
+        console.error(`[WITHDRAW] CRITICAL: Failed to refund wallet for payout ${payout._id}:`, refundError.message);
+        payout.metadata = {
+          needs_manual_refund: true,
+          refund_amount: amount,
+          stripe_error: stripeError.message,
+          refund_error: refundError.message,
+        };
+        await payout.save().catch(() => {});
+      }
 
       return res.status(500).json({
         success: false,
-        message: "Failed to process withdrawal. Please try again later.",
+        message: "Failed to process withdrawal. Your balance has been restored.",
         error: stripeError.message,
       });
     }
   } catch (error) {
+    // Cleanup session if still open
+    if (session) {
+      try {
+        await session.abortTransaction();
+        session.endSession();
+      } catch (sessionError) {
+        console.error("[WITHDRAW] Session cleanup error:", sessionError.message);
+      }
+    }
     console.error("Request withdrawal error:", error);
     next(error);
   }

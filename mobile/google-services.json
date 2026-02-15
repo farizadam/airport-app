@@ -13,7 +13,20 @@
           "package_name": "com.saidare.mobile"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "879099107110-ibinl59n5hbuiv7u5nn20pctgih6odcm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.saidare.mobile",
+            "certificate_hash": "e7a7b4c504efc5c64ebc3db6b6cb95622c45fa03"
+          }
+        },
+        {
+          "client_id": "879099107110-lejrhsdurdl1ib4nitnj30k98hir2q5n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAaw_-fuHLMIcRQd3qucvyEGdcwUuyNZmU"
@@ -21,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "879099107110-lejrhsdurdl1ib4nitnj30k98hir2q5n.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

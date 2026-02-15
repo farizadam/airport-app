@@ -2,10 +2,7 @@ import { useAuthStore } from "@/store/authStore";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
-import * as Google from "expo-auth-session/providers/google";
-import * as WebBrowser from "expo-web-browser";
-import axios from "axios";
+import React, { useState, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,61 +16,89 @@ import {
 import { toast } from "../src/store/toastStore";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-WebBrowser.maybeCompleteAuthSession();
+// Lazy-load native SDKs (they crash if the dev-client wasn't rebuilt)
+let GoogleSignin: any = null;
+let LoginManager: any = null;
+let AccessToken: any = null;
+try {
+  GoogleSignin = require("@react-native-google-signin/google-signin").GoogleSignin;
+  GoogleSignin.configure({
+    webClientId: "879099107110-lejrhsdurdl1ib4nitnj30k98hir2q5n.apps.googleusercontent.com",
+  });
+} catch (e) {
+  console.warn("Google Sign-In not available (rebuild dev-client)");
+}
+try {
+  const fbsdk = require("react-native-fbsdk-next");
+  LoginManager = fbsdk.LoginManager;
+  AccessToken = fbsdk.AccessToken;
+} catch (e) {
+  console.warn("Facebook SDK not available (rebuild dev-client)");
+}
 
 export default function LoginScreen() {
-  // Google Auth
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    expoClientId:
-      "356690847070-a28ve4a9e7gst6e48kiv9punfecthvki.apps.googleusercontent.com",
-    iosClientId:
-      "356690847070-a28ve4a9e7gst6e48kiv9punfecthvki.apps.googleusercontent.com",
-    androidClientId:
-      "356690847070-a28ve4a9e7gst6e48kiv9punfecthvki.apps.googleusercontent.com",
-    webClientId:
-      "356690847070-a28ve4a9e7gst6e48kiv9punfecthvki.apps.googleusercontent.com",
-    scopes: ["profile", "email"],
-  });
-
-  React.useEffect(() => {
-    if (response?.type === "success") {
-      const { id_token } = response.authentication || {};
-      if (id_token) {
-        handleGoogleLogin(id_token);
-      }
-    }
-    // eslint-disable-next-line
-  }, [response]);
-
-  const handleGoogleLogin = async (idToken: string) => {
-    try {
-      setLoading(true);
-      // Use your backend API URL here
-      const apiUrl =
-        process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000/api/v1";
-      const res = await axios.post(`${apiUrl}/auth/google`, {
-        id_token: idToken,
-      });
-      const { user, accessToken, refreshToken } = res.data.data;
-      // Store tokens using SecureStore
-      await import("expo-secure-store").then((SecureStore) => {
-        SecureStore.setItemAsync("accessToken", accessToken);
-        SecureStore.setItemAsync("refreshToken", refreshToken);
-      });
-      login(user.email, undefined); // Set user in store (or update store directly)
-      router.replace("/(tabs)");
-    } catch (error: any) {
-      toast.error("Google Login Failed", error.response?.data?.message || error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
   const router = useRouter();
-  const login = useAuthStore((state) => state.login);
+  const { login, loginWithGoogle, loginWithFacebook } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleGoogleLogin = async () => {
+    if (!GoogleSignin) {
+      toast.error("Not Available", "Google Sign-In requires a new dev-client build. Run: eas build --profile development --platform android");
+      return;
+    }
+    try {
+      setLoading(true);
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      const idToken = response?.data?.idToken;
+      if (!idToken) {
+        throw new Error("Failed to get Google ID token");
+      }
+      const result = await loginWithGoogle(idToken);
+      if (!result.profile_complete) {
+        router.replace("/complete-profile");
+      } else {
+        router.replace("/(tabs)");
+      }
+    } catch (error: any) {
+      if (error.code !== "SIGN_IN_CANCELLED") {
+        toast.error("Google Login Failed", error.message || String(error));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    if (!LoginManager || !AccessToken) {
+      toast.error("Not Available", "Facebook Login requires a new dev-client build. Run: eas build --profile development --platform android");
+      return;
+    }
+    try {
+      setLoading(true);
+      const loginResult = await LoginManager.logInWithPermissions(["public_profile", "email"]);
+      if (loginResult.isCancelled) {
+        return;
+      }
+      const tokenData = await AccessToken.getCurrentAccessToken();
+      if (!tokenData?.accessToken) {
+        throw new Error("Failed to get Facebook access token");
+      }
+      const result = await loginWithFacebook(tokenData.accessToken);
+      if (!result.profile_complete) {
+        router.replace("/complete-profile");
+      } else {
+        router.replace("/(tabs)");
+      }
+    } catch (error: any) {
+      toast.error("Facebook Login Failed", error.message || String(error));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -225,10 +250,10 @@ export default function LoginScreen() {
               style={[
                 styles.button,
                 loading && styles.buttonDisabled,
-                { marginBottom: 16 },
+                { marginBottom: 12 },
               ]}
-              onPress={() => promptAsync()}
-              disabled={!request || loading}
+              onPress={handleGoogleLogin}
+              disabled={loading}
               activeOpacity={0.8}
             >
               <LinearGradient
@@ -243,6 +268,30 @@ export default function LoginScreen() {
                 <Ionicons name="logo-google" size={20} color="#EA4335" />
                 <Text style={[styles.buttonText, { color: "#1E293B" }]}>
                   Continue with Google
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Facebook Login Button */}
+            <TouchableOpacity
+              style={[
+                styles.button,
+                loading && styles.buttonDisabled,
+                { marginBottom: 16 },
+              ]}
+              onPress={handleFacebookLogin}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={loading ? ["#94A3B8", "#94A3B8"] : ["#1877F2", "#1565D8"]}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name="logo-facebook" size={20} color="#fff" />
+                <Text style={styles.buttonText}>
+                  Continue with Facebook
                 </Text>
               </LinearGradient>
             </TouchableOpacity>

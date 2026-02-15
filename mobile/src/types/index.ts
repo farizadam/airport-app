@@ -20,6 +20,12 @@ export interface User {
   trips_completed?: number;
   email_verified?: boolean;
   phone_verified?: boolean;
+  auth_provider?: "email" | "google" | "facebook";
+  google_id?: string;
+  facebook_id?: string;
+  profile_complete?: boolean;
+  id_image_front_url?: string;
+  id_image_back_url?: string;
 }
 
 export interface Airport {

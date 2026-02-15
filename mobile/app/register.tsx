@@ -16,9 +16,82 @@ import {
   TouchableOpacity,
   View,
   Image,
+  Modal,
+  FlatList,
 } from "react-native";
 import { toast } from "../src/store/toastStore";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// Lazy-load native SDKs (they crash if the dev-client wasn't rebuilt)
+let GoogleSignin: any = null;
+let LoginManager: any = null;
+let AccessToken: any = null;
+try {
+  GoogleSignin = require("@react-native-google-signin/google-signin").GoogleSignin;
+  GoogleSignin.configure({
+    webClientId: "879099107110-lejrhsdurdl1ib4nitnj30k98hir2q5n.apps.googleusercontent.com",
+  });
+} catch (e) {
+  console.warn("Google Sign-In not available (rebuild dev-client)");
+}
+try {
+  const fbsdk = require("react-native-fbsdk-next");
+  LoginManager = fbsdk.LoginManager;
+  AccessToken = fbsdk.AccessToken;
+} catch (e) {
+  console.warn("Facebook SDK not available (rebuild dev-client)");
+}
+
+// Country codes list
+const COUNTRY_CODES = [
+  { code: "+212", flag: "🇲🇦", name: "Morocco" },
+  { code: "+213", flag: "🇩🇿", name: "Algeria" },
+  { code: "+216", flag: "🇹🇳", name: "Tunisia" },
+  { code: "+33", flag: "🇫🇷", name: "France" },
+  { code: "+34", flag: "🇪🇸", name: "Spain" },
+  { code: "+1", flag: "🇺🇸", name: "United States" },
+  { code: "+44", flag: "🇬🇧", name: "United Kingdom" },
+  { code: "+49", flag: "🇩🇪", name: "Germany" },
+  { code: "+39", flag: "🇮🇹", name: "Italy" },
+  { code: "+351", flag: "🇵🇹", name: "Portugal" },
+  { code: "+31", flag: "🇳🇱", name: "Netherlands" },
+  { code: "+32", flag: "🇧🇪", name: "Belgium" },
+  { code: "+41", flag: "🇨🇭", name: "Switzerland" },
+  { code: "+90", flag: "🇹🇷", name: "Turkey" },
+  { code: "+20", flag: "🇪🇬", name: "Egypt" },
+  { code: "+966", flag: "🇸🇦", name: "Saudi Arabia" },
+  { code: "+971", flag: "🇦🇪", name: "UAE" },
+  { code: "+974", flag: "🇶🇦", name: "Qatar" },
+  { code: "+965", flag: "🇰🇼", name: "Kuwait" },
+  { code: "+968", flag: "🇴🇲", name: "Oman" },
+  { code: "+973", flag: "🇧🇭", name: "Bahrain" },
+  { code: "+218", flag: "🇱🇾", name: "Libya" },
+  { code: "+222", flag: "🇲🇷", name: "Mauritania" },
+  { code: "+223", flag: "🇲🇱", name: "Mali" },
+  { code: "+221", flag: "🇸🇳", name: "Senegal" },
+  { code: "+225", flag: "🇨🇮", name: "Ivory Coast" },
+  { code: "+91", flag: "🇮🇳", name: "India" },
+  { code: "+86", flag: "🇨🇳", name: "China" },
+  { code: "+81", flag: "🇯🇵", name: "Japan" },
+  { code: "+82", flag: "🇰🇷", name: "South Korea" },
+  { code: "+61", flag: "🇦🇺", name: "Australia" },
+  { code: "+55", flag: "🇧🇷", name: "Brazil" },
+  { code: "+7", flag: "🇷🇺", name: "Russia" },
+  { code: "+48", flag: "🇵🇱", name: "Poland" },
+  { code: "+46", flag: "🇸🇪", name: "Sweden" },
+  { code: "+47", flag: "🇳🇴", name: "Norway" },
+  { code: "+45", flag: "🇩🇰", name: "Denmark" },
+  { code: "+358", flag: "🇫🇮", name: "Finland" },
+  { code: "+43", flag: "🇦🇹", name: "Austria" },
+  { code: "+30", flag: "🇬🇷", name: "Greece" },
+  { code: "+353", flag: "🇮🇪", name: "Ireland" },
+  { code: "+52", flag: "🇲🇽", name: "Mexico" },
+  { code: "+54", flag: "🇦🇷", name: "Argentina" },
+  { code: "+57", flag: "🇨🇴", name: "Colombia" },
+  { code: "+234", flag: "🇳🇬", name: "Nigeria" },
+  { code: "+27", flag: "🇿🇦", name: "South Africa" },
+  { code: "+254", flag: "🇰🇪", name: "Kenya" },
+];
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -37,6 +110,69 @@ export default function RegisterScreen() {
     id_image_front: "",
     id_image_back: "",
   });
+
+  const [selectedCountryCode, setSelectedCountryCode] = useState(COUNTRY_CODES[0]); // Morocco default
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+
+  const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
+  const loginWithFacebook = useAuthStore((state) => state.loginWithFacebook);
+
+  const handleGoogleSignIn = async () => {
+    if (!GoogleSignin) {
+      toast.error("Not Available", "Google Sign-In requires a new dev-client build.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      const idToken = response?.data?.idToken;
+      if (!idToken) {
+        throw new Error("Failed to get Google ID token");
+      }
+      const result = await loginWithGoogle(idToken);
+      if (result && !result.profile_complete) {
+        router.replace("/complete-profile");
+      } else {
+        router.replace("/(tabs)");
+      }
+    } catch (error: any) {
+      if (error.code !== "SIGN_IN_CANCELLED") {
+        toast.error("Google Login Failed", error.message || String(error));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFacebookSignIn = async () => {
+    if (!LoginManager || !AccessToken) {
+      toast.error("Not Available", "Facebook Login requires a new dev-client build.");
+      return;
+    }
+    try {
+      setLoading(true);
+      const loginResult = await LoginManager.logInWithPermissions(["public_profile", "email"]);
+      if (loginResult.isCancelled) {
+        return;
+      }
+      const tokenData = await AccessToken.getCurrentAccessToken();
+      if (!tokenData?.accessToken) {
+        throw new Error("Failed to get Facebook access token");
+      }
+      const result = await loginWithFacebook(tokenData.accessToken);
+      if (result && !result.profile_complete) {
+        router.replace("/complete-profile");
+      } else {
+        router.replace("/(tabs)");
+      }
+    } catch (error: any) {
+      toast.error("Facebook Login Failed", error.message || String(error));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -158,16 +294,19 @@ export default function RegisterScreen() {
     }
     try {
       setLoading(true);
-      // Validate phone number is in E.164 format (required by Firebase)
-      const isE164 = /^\+[1-9]\d{1,14}$/.test(formData.phone);
+      // Build full phone number with country code
+      const fullPhone = selectedCountryCode.code + formData.phone.replace(/^0+/, "");
+      const isE164 = /^\+[1-9]\d{1,14}$/.test(fullPhone);
       if (!isE164) {
-        toast.warning("Invalid Phone Number", "Phone number must be in E.164 format. Example: +12025550123");
+        toast.warning("Invalid Phone Number", "Please enter a valid phone number.");
         return;
       }
+      // Update formData with full E.164 phone
+      setFormData((prev) => ({ ...prev, phone: fullPhone }));
 
       // Use modular signInWithPhoneNumber API
       try {
-        const confirmation = await signInWithPhoneNumber(auth, formData.phone);
+        const confirmation = await signInWithPhoneNumber(auth, fullPhone);
         setVerificationId(confirmation);
         setPhoneOtpSent(true);
         toast.info("OTP Sent", "A verification code was sent to your phone.");
@@ -384,6 +523,33 @@ export default function RegisterScreen() {
           <View style={styles.form}>
             {step === 0 && (
               <>
+                {/* Social Login Buttons */}
+                <View style={{ marginBottom: 20 }}>
+                  <TouchableOpacity
+                    style={styles.socialButton}
+                    onPress={handleGoogleSignIn}
+                    disabled={loading}
+                  >
+                    <Ionicons name="logo-google" size={22} color="#DB4437" />
+                    <Text style={styles.socialButtonText}>Continue with Google</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.socialButton, { backgroundColor: "#1877F2" }]}
+                    onPress={handleFacebookSignIn}
+                    disabled={loading}
+                  >
+                    <Ionicons name="logo-facebook" size={22} color="#fff" />
+                    <Text style={[styles.socialButtonText, { color: "#fff" }]}>Continue with Facebook</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or register with email</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+                </View>
+
                 <View style={styles.row}>
                   <View style={[styles.inputContainer, styles.halfWidth]}>
                     <Text style={styles.label}>First Name</Text>
@@ -447,22 +613,29 @@ export default function RegisterScreen() {
               <>
                 <View style={styles.inputContainer}>
                   <Text style={styles.label}>Phone Number</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons
-                      name="call-outline"
-                      size={20}
-                      color="#9CA3AF"
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="+212 6XX XXX XXX"
-                      placeholderTextColor="#9CA3AF"
-                      value={formData.phone}
-                      onChangeText={(value) => updateField("phone", value)}
-                      keyboardType="phone-pad"
-                      autoComplete="tel"
-                    />
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {/* Country Code Picker */}
+                    <TouchableOpacity
+                      style={styles.countryCodeButton}
+                      onPress={() => setShowCountryPicker(true)}
+                    >
+                      <Text style={styles.countryFlag}>{selectedCountryCode.flag}</Text>
+                      <Text style={styles.countryCodeText}>{selectedCountryCode.code}</Text>
+                      <Ionicons name="chevron-down" size={14} color="#6B7280" />
+                    </TouchableOpacity>
+
+                    {/* Phone number input */}
+                    <View style={[styles.inputWrapper, { flex: 1 }]}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="6XX XXX XXX"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.phone}
+                        onChangeText={(value) => updateField("phone", value)}
+                        keyboardType="phone-pad"
+                        autoComplete="tel"
+                      />
+                    </View>
                   </View>
                 </View>
 
@@ -928,6 +1101,60 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      {/* Country Code Picker Modal */}
+      <Modal
+        visible={showCountryPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Country</Text>
+              <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                <Ionicons name="close" size={24} color="#1F2937" />
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.inputWrapper, { marginBottom: 12, marginHorizontal: 16 }]}>
+              <Ionicons name="search" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.input}
+                placeholder="Search country..."
+                placeholderTextColor="#9CA3AF"
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                autoCapitalize="none"
+              />
+            </View>
+            <FlatList
+              data={COUNTRY_CODES.filter(
+                (c) =>
+                  c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
+                  c.code.includes(countrySearch)
+              )}
+              keyExtractor={(item) => item.code + item.name}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.countryItem,
+                    selectedCountryCode.code === item.code && styles.countryItemSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedCountryCode(item);
+                    setShowCountryPicker(false);
+                    setCountrySearch("");
+                  }}
+                >
+                  <Text style={styles.countryItemFlag}>{item.flag}</Text>
+                  <Text style={styles.countryItemName}>{item.name}</Text>
+                  <Text style={styles.countryItemCode}>{item.code}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1201,5 +1428,114 @@ const styles = StyleSheet.create({
   signInTextBold: {
     color: "#1F2937",
     fontWeight: "700",
+  },
+
+  /* ===== SOCIAL LOGIN ===== */
+  socialButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    height: 52,
+    marginBottom: 10,
+  },
+  socialButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "500",
+  },
+
+  /* ===== COUNTRY CODE PICKER ===== */
+  countryCodeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 10,
+    height: 56,
+    gap: 4,
+  },
+  countryFlag: {
+    fontSize: 20,
+  },
+  countryCodeText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+
+  /* ===== COUNTRY PICKER MODAL ===== */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "70%",
+    paddingBottom: 32,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  countryItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#F1F5F9",
+  },
+  countryItemSelected: {
+    backgroundColor: "#EFF6FF",
+  },
+  countryItemFlag: {
+    fontSize: 22,
+    marginRight: 12,
+  },
+  countryItemName: {
+    flex: 1,
+    fontSize: 15,
+    color: "#1F2937",
+  },
+  countryItemCode: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
   },
 });

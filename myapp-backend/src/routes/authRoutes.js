@@ -13,7 +13,6 @@ const registerSchema = Joi.object({
   last_name: validationRules.lastName,
   phone: validationRules.phone,
   role: validationRules.role,
-  firebase_token: Joi.string().required(),
   firebase_token: Joi.string().optional(),
   id_image_front: Joi.string().optional(),
   id_image_back: Joi.string().optional(),
@@ -32,7 +31,9 @@ const PasswordResetController = require("../controllers/passwordResetController"
 router.post("/send-email-otp", EmailOtpController.sendEmailOtp);
 router.post("/verify-email-otp", EmailOtpController.verifyEmailOtp);
 router.post("/login", validate(loginSchema), AuthController.login);
-router.post("/google", AuthController.googleLogin); // Google login endpoint
+router.post("/google", AuthController.googleLogin);
+router.post("/facebook", AuthController.facebookLogin);
+router.post("/complete-profile", authMiddleware, AuthController.completeProfile);
 router.post("/refresh", AuthController.refresh);
 router.post("/logout", AuthController.logout);
 router.get("/me", authMiddleware, AuthController.getMe);
