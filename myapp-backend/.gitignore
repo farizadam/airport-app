@@ -14,3 +14,4 @@ coverage/
 *.swo
 *~
 .npm
+src/config/airport-app-b0741-firebase-adminsdk-fbsvc-cb481d5a0a.json

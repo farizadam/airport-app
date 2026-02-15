@@ -95,7 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       if (token) {
         try {
-          const response = await api.get("/auth/me");
+          const response = await api.get("/users/me");
           console.log(
             "👤 Loaded User Data:",
             JSON.stringify(response.data.data, null, 2),
@@ -141,7 +141,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   refreshUser: async () => {
     try {
-      const response = await api.get("/auth/me");
+      const response = await api.get("/users/me");
       set({ user: response.data.data });
     } catch (error) {
       console.error("Failed to refresh user:", error);

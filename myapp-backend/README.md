@@ -1,6 +1,6 @@
 # Airport Carpooling Backend API
 
-Backend REST API for an airport carpooling application built with Node.js, Express, and PostgreSQL.
+Backend REST API for an airport carpooling application built with Node.js, Express, and MongoDB.
 
 ## 🚀 Features
 
@@ -13,12 +13,11 @@ Backend REST API for an airport carpooling application built with Node.js, Expre
 - ✅ Booking system (request/accept/reject/cancel)
 - ✅ Notifications system
 - ✅ Input validation and error handling
-- ✅ Database transactions for data integrity
 
 ## 📋 Prerequisites
 
 - Node.js v16+
-- PostgreSQL 12+
+- MongoDB v5+ (or a MongoDB Atlas account)
 - npm or yarn
 
 ## 🛠️ Installation
@@ -26,7 +25,6 @@ Backend REST API for an airport carpooling application built with Node.js, Expre
 ### 1. Clone and Install Dependencies
 
 ```bash
-cd myapp-backend
 npm install
 ```
 

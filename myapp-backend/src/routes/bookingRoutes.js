@@ -11,11 +11,13 @@ router.use(authMiddleware);
 // Validation schemas
 const createBookingSchema = Joi.object({
   seats: validationRules.positiveInt,
+  luggage_count: Joi.number().integer().min(0).default(0),
 });
 
 const updateBookingSchema = Joi.object({
-  status: Joi.string().valid("accepted", "rejected", "cancelled").required(),
-});
+  status: Joi.string().valid("accepted", "rejected", "cancelled"),
+  seats: validationRules.positiveInt.optional(),
+}).min(1);
 
 // Routes
 router.post(
@@ -23,13 +25,13 @@ router.post(
   validate(createBookingSchema),
   BookingController.create
 );
+// Routes for getting bookings
+router.get("/bookings/my-bookings", BookingController.getMyBookings);
 router.get("/me/bookings", BookingController.getMyBookings);
-// Alias for frontend compatibility
-router.get("/my-bookings", BookingController.getMyBookings);
 router.patch(
   "/bookings/:id",
   validate(updateBookingSchema),
-  BookingController.updateStatus
+  BookingController.updateBooking
 );
 
 module.exports = router;

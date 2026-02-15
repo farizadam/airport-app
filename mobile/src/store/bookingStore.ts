@@ -32,7 +32,7 @@ export const useBookingStore = create<BookingState>((set) => ({
     try {
       set({ isLoading: true });
       const response = await api.get<{ data: Booking[] }>(
-        "/bookings/my-bookings"
+        "/my-bookings"
       );
       set({ myBookings: response.data.data });
     } catch (error: any) {

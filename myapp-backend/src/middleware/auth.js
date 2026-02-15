@@ -35,15 +35,28 @@ async function authMiddleware(req, res, next) {
       });
     }
 
-    // Attach user to request (convert to plain object)
+    // Attach user to request (convert to plain object to avoid .toJSON() issues later if we forget)
+    // We manually construct the object to ensure only safe fields are passed.
     req.user = {
       id: user._id.toString(),
+      _id: user._id.toString(), // Keep _id for compatibility
       email: user.email,
       first_name: user.first_name,
       last_name: user.last_name,
       phone: user.phone,
       role: user.role,
       avatar_url: user.avatar_url,
+      date_of_birth: user.date_of_birth,
+      bio: user.bio,
+      languages: user.languages,
+      car_model: user.car_model,
+      car_color: user.car_color,
+      trips_completed: user.trips_completed,
+      rating: user.rating,
+      rating_count: user.rating_count,
+      phone_verified: user.phone_verified,
+      email_verified: user.email_verified,
+      createdAt: user.createdAt,
     };
     return next();
   } catch (e) {

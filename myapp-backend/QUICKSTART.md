@@ -40,10 +40,14 @@ mongosh --eval "db.version()"
 
 ## Configure Environment
 
-Update `.env` with your MongoDB URI (default is localhost):
+Create a `.env` file in the project root and add your MongoDB URI:
 
-```
+```env
+# For local MongoDB
 MONGODB_URI=mongodb://localhost:27017/airport_carpooling
+
+# For MongoDB Atlas
+# MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/airport_carpooling
 ```
 
 ## Seed Database
