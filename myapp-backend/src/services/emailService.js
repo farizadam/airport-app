@@ -2,6 +2,9 @@ const { Resend } = require("resend");
 
 // Use Resend API for reliable email delivery on cloud platforms
 // Set env: RESEND_API_KEY and FROM_EMAIL
+console.log("📧 Email service: Using Resend API");
+console.log("📧 RESEND_API_KEY configured:", !!process.env.RESEND_API_KEY);
+
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
