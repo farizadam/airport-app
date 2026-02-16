@@ -777,23 +777,29 @@ class RideController {
               refund_reason: "ride_cancelled"
             });
 
-          } else if (booking.payment_method === "wallet" || (!booking.payment_method && !booking.payment_intent_id)) {
-            // WALLET PAYMENT REFUND (handles both new and legacy bookings without payment_method field)
+          } else if (booking.payment_method === "wallet") {
+            // WALLET PAYMENT REFUND
             console.log(`[RideCancel] Refunding wallet payment for booking ${booking._id}`);
             
             const totalAmount = Math.round(existingRide.price_per_seat * booking.seats * 100);
             const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
             const driverEarnings = Math.round(totalAmount * ((100 - feePercentage) / 100));
 
-            // Credit passenger's wallet with FULL amount (100%) - NO FEE DEDUCTION
-            const passengerWallet = await Wallet.getOrCreateWallet(booking.passenger_id);
+            // Extract passenger ID properly (booking.passenger_id may be populated)
+            const passengerId = booking.passenger_id._id ? booking.passenger_id._id.toString() : booking.passenger_id.toString();
+            console.log(`[RideCancel] Passenger ID extracted: ${passengerId}, totalAmount: ${totalAmount}`);
+
+            // Credit passenger's wallet with FULL amount (100%) - no fee deduction
+            const passengerWallet = await Wallet.getOrCreateWallet(passengerId);
+            console.log(`[RideCancel] Passenger wallet found: ${passengerWallet._id}, current balance: ${passengerWallet.balance}`);
             passengerWallet.balance += totalAmount;
             await passengerWallet.save();
+            console.log(`[RideCancel] Passenger wallet credited. New balance: ${passengerWallet.balance}`);
 
             // Create refund transaction for passenger
             await Transaction.create({
               wallet_id: passengerWallet._id,
-              user_id: booking.passenger_id,
+              user_id: passengerId,
               type: "refund",
               amount: totalAmount,
               gross_amount: totalAmount,
@@ -842,7 +848,10 @@ class RideController {
               refund_reason: "ride_cancelled"
             });
 
-            console.log(`[RideCancel] Wallet refund: ${totalAmount} cents to passenger, ${driverEarnings} cents deducted from driver`);
+            console.log(`[RideCancel] Wallet refund: ${totalAmount} cents to passenger ${passengerId}, ${driverEarnings} cents deducted from driver`);
+          } else {
+            // No payment method recognized - log for debugging
+            console.warn(`[RideCancel] Unknown payment method for booking ${booking._id}: payment_method=${booking.payment_method}, payment_intent_id=${booking.payment_intent_id}`);
           }
 
           refundResults.processed++;

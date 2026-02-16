@@ -386,20 +386,18 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
                <Text style={styles.tripSeatsText}>{seatsDisplay}</Text>
              </View>
            )}
-           {(item.luggage_capacity !== undefined && item.luggage_capacity > 0) && (
-             <View style={[styles.tripSeats, { marginLeft: 8 }]}>
-               <Ionicons name="briefcase-outline" size={14} color="#64748B" />
-               <Text style={styles.tripSeatsText}>
-                 {item.luggage_left !== undefined ? `${item.luggage_left}/${item.luggage_capacity}` : item.luggage_capacity}
-               </Text>
-             </View>
-           )}
-           {(item.luggage_count !== undefined && item.luggage_count > 0 && !item.luggage_capacity) && (
-             <View style={[styles.tripSeats, { marginLeft: 8 }]}>
-               <Ionicons name="briefcase-outline" size={14} color="#64748B" />
-               <Text style={styles.tripSeatsText}>{item.luggage_count} bag(s)</Text>
-             </View>
-           )}
+           <View style={[styles.tripSeats, { marginLeft: 8 }]}>
+             <Ionicons name="briefcase-outline" size={14} color="#64748B" />
+             <Text style={styles.tripSeatsText}>
+               {item.luggage_capacity !== undefined
+                 ? (item.luggage_left !== undefined 
+                   ? `${item.luggage_capacity - item.luggage_left}/${item.luggage_capacity} bags` 
+                   : `${item.luggage_capacity} bags`)
+                 : item.luggage_count !== undefined
+                   ? `${item.luggage_count} bag(s)`
+                   : '0 bags'}
+             </Text>
+           </View>
         </View>
 
         {/* Cancel Button (Only for drivers — passengers cannot cancel from card) */}

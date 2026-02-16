@@ -339,6 +339,10 @@ class BookingController {
             try {
               console.log(`[BookingCancel] Processing refund for booking ${id}, payment method: ${booking.payment_method}`);
               
+              // Extract passenger ID properly (in case it's populated)
+              const passengerId = booking.passenger_id._id ? booking.passenger_id._id.toString() : booking.passenger_id.toString();
+              const driverIdForWallet = ride.driver_id._id ? ride.driver_id._id.toString() : ride.driver_id.toString();
+              
               if (booking.payment_method === "card" && booking.payment_intent_id) {
                 // CARD PAYMENT REFUND via Stripe
                 console.log(`[BookingCancel] Refunding card payment for booking ${id}, PaymentIntent: ${booking.payment_intent_id}`);
@@ -351,7 +355,6 @@ class BookingController {
                 try {
                   const paymentIntent = await stripe.paymentIntents.retrieve(booking.payment_intent_id);
                   if (paymentIntent.transfer_data?.destination) {
-                    // Driver has Stripe Connect - reverse the transfer and application fee
                     refundParams.reverse_transfer = true;
                     refundParams.refund_application_fee = true;
                     console.log(`[BookingCancel] Reversing transfer to ${paymentIntent.transfer_data.destination} and application fee`);
@@ -363,11 +366,17 @@ class BookingController {
                 const refund = await stripe.refunds.create(refundParams);
                 console.log(`[BookingCancel] Stripe refund created: ${refund.id}, Amount: ${refund.amount} cents`);
 
+                // Mark booking as refunded with Stripe refund ID
+                booking.payment_status = "refunded";
+                booking.refund_id = refund.id;
+                booking.refunded_at = new Date();
+                booking.refund_reason = "passenger_cancelled";
+
                 // If driver was credited via wallet (no Stripe Connect), deduct from driver's wallet
-                const driver = await User.findById(ride.driver_id._id);
+                const driver = await User.findById(driverIdForWallet);
                 if (!driver?.stripeAccountId) {
                   try {
-                    const driverWallet = await Wallet.getOrCreateWallet(ride.driver_id._id);
+                    const driverWallet = await Wallet.getOrCreateWallet(driverIdForWallet);
                     const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
                     const grossAmount = ride.price_per_seat * booking.seats * 100;
                     const driverEarnings = Math.round(grossAmount * ((100 - feePercentage) / 100));
@@ -379,7 +388,7 @@ class BookingController {
 
                       await Transaction.create({
                         wallet_id: driverWallet._id,
-                        user_id: ride.driver_id._id,
+                        user_id: driverIdForWallet,
                         type: "refund",
                         amount: -driverEarnings,
                         gross_amount: grossAmount,
@@ -403,23 +412,25 @@ class BookingController {
                   }
                 }
 
-              } else if (booking.payment_method === "wallet" || (!booking.payment_method && !booking.payment_intent_id)) {
-                // WALLET PAYMENT REFUND (handles both new and legacy bookings without payment_method field)
-                console.log(`[BookingCancel] Refunding wallet payment for booking ${id}`);
+              } else if (booking.payment_method === "wallet") {
+                // WALLET PAYMENT REFUND
+                console.log(`[BookingCancel] Refunding wallet payment for booking ${id}, passenger: ${passengerId}`);
                 
                 const totalAmount = Math.round(ride.price_per_seat * booking.seats * 100);
                 const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
                 const driverEarnings = Math.round(totalAmount * ((100 - feePercentage) / 100));
 
-                // Credit passenger's wallet with FULL amount (100%) - NO FEE DEDUCTION
-                const passengerWallet = await Wallet.getOrCreateWallet(booking.passenger_id);
+                // Credit passenger's wallet with FULL amount (100%) - no fee deduction
+                const passengerWallet = await Wallet.getOrCreateWallet(passengerId);
+                console.log(`[BookingCancel] Passenger wallet found: ${passengerWallet._id}, balance before: ${passengerWallet.balance}`);
                 passengerWallet.balance += totalAmount;
                 await passengerWallet.save();
+                console.log(`[BookingCancel] Passenger wallet credited. New balance: ${passengerWallet.balance}`);
 
                 // Create refund transaction for passenger
                 await Transaction.create({
                   wallet_id: passengerWallet._id,
-                  user_id: booking.passenger_id,
+                  user_id: passengerId,
                   type: "refund",
                   amount: totalAmount,
                   gross_amount: totalAmount,
@@ -435,7 +446,7 @@ class BookingController {
                 });
 
                 // Deduct from driver's wallet
-                const driverWallet = await Wallet.getOrCreateWallet(ride.driver_id._id);
+                const driverWallet = await Wallet.getOrCreateWallet(driverIdForWallet);
                 if (driverWallet.balance >= driverEarnings) {
                   driverWallet.balance -= driverEarnings;
                   driverWallet.total_earned -= driverEarnings;
@@ -443,7 +454,7 @@ class BookingController {
 
                   await Transaction.create({
                     wallet_id: driverWallet._id,
-                    user_id: ride.driver_id._id,
+                    user_id: driverIdForWallet,
                     type: "refund",
                     amount: -driverEarnings,
                     gross_amount: totalAmount,
@@ -461,19 +472,15 @@ class BookingController {
                   console.warn(`[BookingCancel] Driver wallet has insufficient balance for refund. Required: ${driverEarnings}, Available: ${driverWallet.balance}`);
                 }
 
-                console.log(`[BookingCancel] Wallet refund: ${totalAmount} cents to passenger, ${driverEarnings} cents deducted from driver`);
+                console.log(`[BookingCancel] Wallet refund: ${totalAmount} cents to passenger ${passengerId}, ${driverEarnings} cents deducted from driver`);
 
-                // Mark booking as refunded
+                // Mark booking as refunded (no Stripe refund ID for wallet payments)
                 booking.payment_status = "refunded";
                 booking.refunded_at = new Date();
                 booking.refund_reason = "passenger_cancelled";
+              } else {
+                console.warn(`[BookingCancel] Unknown payment method for booking ${id}: ${booking.payment_method}`);
               }
-
-              // Mark booking as refunded
-              booking.payment_status = "refunded";
-            booking.refund_id = refund.id;
-            booking.refunded_at = new Date();
-            booking.refund_reason = "passenger_cancelled";
             } catch (refundError) {
               console.error(`[BookingCancel] Error processing refund for booking ${id}:`, refundError);
               // Don't fail the cancellation if refund fails - log it for manual processing

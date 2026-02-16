@@ -61,8 +61,8 @@ export default function RideDetailsScreen() {
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
-  const [seats, setSeats] = useState("1");
-  const [luggageCount, setLuggageCount] = useState("0");
+  const [seats, setSeats] = useState(1);
+  const [luggageCount, setLuggageCount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
   const [actionId, setActionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -148,17 +148,17 @@ export default function RideDetailsScreen() {
   }, [id, user, ride, fetchRideById, getRideBookings, getMyBookings]);
 
   const handleBooking = async () => {
-    if (!seats || parseInt(seats) < 1) {
-      Alert.alert("Error", "Please enter a valid number of seats");
+    if (seats < 1) {
+      Alert.alert("Error", "Please select at least 1 seat");
       return;
     }
 
-    if (parseInt(seats) > (ride?.seats_left || 0)) {
+    if (seats > (ride?.seats_left || 0)) {
       Alert.alert("Error", "Not enough seats available");
       return;
     }
 
-    const luggage = parseInt(luggageCount) || 0;
+    const luggage = luggageCount;
     if (luggage > (ride?.luggage_left ?? ride?.luggage_capacity ?? 0)) {
       Alert.alert("Error", `Only ${ride?.luggage_left ?? ride?.luggage_capacity ?? 0} luggage spot(s) available`);
       return;
@@ -178,7 +178,7 @@ export default function RideDetailsScreen() {
       
       console.log("Processing wallet payment for ride:", id, "seats:", seats);
       
-      const result = await payWithWallet(id!, parseInt(seats), parseInt(luggageCount) || 0);
+      const result = await payWithWallet(id!, seats, luggageCount);
       
       if (result.success) {
         // Refresh bookings
@@ -207,8 +207,8 @@ export default function RideDetailsScreen() {
       // Step 1: Create PaymentIntent (NO booking yet)
       const response = await api.post("/payments/create-intent", {
         rideId: id,
-        seats: parseInt(seats),
-        luggage_count: parseInt(luggageCount) || 0,
+        seats: seats,
+        luggage_count: luggageCount,
       });
       
       console.log("Payment intent response:", response.data);
@@ -244,8 +244,8 @@ export default function RideDetailsScreen() {
       const completeResponse = await api.post("/payments/complete", {
         paymentIntentId: paymentIntentId,
         rideId: id,
-        seats: parseInt(seats),
-        luggage_count: parseInt(luggageCount) || 0,
+        seats: seats,
+        luggage_count: luggageCount,
       });
       
       console.log("Complete response:", completeResponse.data);
@@ -574,14 +574,14 @@ export default function RideDetailsScreen() {
               <Ionicons name="people-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Seats</Text>
               <Text style={styles.detailValue}>
-                {ride.seats_left} / {ride.seats_total}
+                {ride.seats_total - ride.seats_left}/{ride.seats_total} booked
               </Text>
             </View>
             <View style={styles.detailItem}>
               <Ionicons name="briefcase-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Luggage</Text>
               <Text style={styles.detailValue}>
-                {ride.luggage_left ?? ride.luggage_capacity ?? 0} / {ride.luggage_capacity ?? 0}
+                {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? ride.luggage_capacity ?? 0)}/{ride.luggage_capacity ?? 0} booked
               </Text>
             </View>
             <View style={styles.detailItem}>
@@ -980,12 +980,14 @@ export default function RideDetailsScreen() {
             <Text style={styles.modalTitle}>Book Ride</Text>
 
             <View style={styles.modalInfo}>
-              <Text style={styles.modalInfoText}>
-                Available: {ride.seats_left} seats
-              </Text>
-              <Text style={styles.modalInfoText}>
-                Luggage space: {ride.luggage_left ?? ride.luggage_capacity ?? 0} spot(s)
-              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={styles.modalInfoText}>
+                  Seats: {(ride.seats_total - ride.seats_left)}/{ride.seats_total} booked
+                </Text>
+                <Text style={styles.modalInfoText}>
+                  Luggage: {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? ride.luggage_capacity ?? 0)}/{ride.luggage_capacity ?? 0} booked
+                </Text>
+              </View>
               <Text style={styles.modalInfoText}>
                 Price: {ride.price_per_seat} EUR per seat
               </Text>
@@ -993,28 +995,54 @@ export default function RideDetailsScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Number of Seats</Text>
-              <TextInput
-                style={styles.input}
-                value={seats}
-                onChangeText={setSeats}
-                keyboardType="number-pad"
-                placeholder="1"
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 4 }}>
+                <TouchableOpacity
+                  onPress={() => setSeats(Math.max(1, seats - 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: seats > 1 ? '#E2E8F0' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                  disabled={seats <= 1}
+                >
+                  <Ionicons name="remove" size={22} color={seats > 1 ? '#334155' : '#CBD5E1'} />
+                </TouchableOpacity>
+                <View style={{ minWidth: 50, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 20, fontWeight: '700', color: '#1E293B' }}>{seats}</Text>
+                  <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>seat{seats !== 1 ? 's' : ''}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setSeats(Math.min(ride.seats_left, seats + 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: seats < ride.seats_left ? '#DBEAFE' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                  disabled={seats >= ride.seats_left}
+                >
+                  <Ionicons name="add" size={22} color={seats < ride.seats_left ? '#3B82F6' : '#CBD5E1'} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Number of Luggage</Text>
-              <TextInput
-                style={styles.input}
-                value={luggageCount}
-                onChangeText={setLuggageCount}
-                keyboardType="number-pad"
-                placeholder="0"
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 4 }}>
+                <TouchableOpacity
+                  onPress={() => setLuggageCount(Math.max(0, luggageCount - 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: luggageCount > 0 ? '#E2E8F0' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                  disabled={luggageCount <= 0}
+                >
+                  <Ionicons name="remove" size={22} color={luggageCount > 0 ? '#334155' : '#CBD5E1'} />
+                </TouchableOpacity>
+                <View style={{ minWidth: 50, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 20, fontWeight: '700', color: '#1E293B' }}>{luggageCount}</Text>
+                  <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>bag{luggageCount !== 1 ? 's' : ''}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setLuggageCount(Math.min(ride?.luggage_left ?? ride?.luggage_capacity ?? 0, luggageCount + 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: luggageCount < (ride?.luggage_left ?? ride?.luggage_capacity ?? 0) ? '#DBEAFE' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                  disabled={luggageCount >= (ride?.luggage_left ?? ride?.luggage_capacity ?? 0)}
+                >
+                  <Ionicons name="add" size={22} color={luggageCount < (ride?.luggage_left ?? ride?.luggage_capacity ?? 0) ? '#3B82F6' : '#CBD5E1'} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.totalPrice}>
-              Total: {(parseFloat(seats) || 0) * ride.price_per_seat} EUR
+              Total: {seats * ride.price_per_seat} EUR
             </Text>
 
             {/* Payment Method Selection */}
@@ -1026,15 +1054,15 @@ export default function RideDetailsScreen() {
                 style={[
                   styles.paymentMethodOption,
                   paymentMethod === 'wallet' && styles.paymentMethodSelected,
-                  (wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && styles.paymentMethodDisabled
+                  (wallet?.balance || 0) < seats * (ride?.price_per_seat || 0) * 100 && styles.paymentMethodDisabled
                 ]}
                 onPress={() => {
-                  const totalCents = (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100;
+                  const totalCents = seats * (ride?.price_per_seat || 0) * 100;
                   if ((wallet?.balance || 0) >= totalCents) {
                     setPaymentMethod('wallet');
                   }
                 }}
-                disabled={(wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100}
+                disabled={(wallet?.balance || 0) < seats * (ride?.price_per_seat || 0) * 100}
               >
                 <View style={styles.paymentMethodLeft}>
                   <Ionicons 
@@ -1059,7 +1087,7 @@ export default function RideDetailsScreen() {
                     <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
                   </View>
                 )}
-                {(wallet?.balance || 0) >= (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && (
+                {(wallet?.balance || 0) >= seats * (ride?.price_per_seat || 0) * 100 && (
                   <View style={styles.noFeeBadge}>
                     <Text style={styles.noFeeText}>No fees!</Text>
                   </View>
@@ -1067,9 +1095,9 @@ export default function RideDetailsScreen() {
               </TouchableOpacity>
 
               {/* Insufficient balance warning */}
-              {(wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && (
+              {(wallet?.balance || 0) < seats * (ride?.price_per_seat || 0) * 100 && (
                 <Text style={styles.insufficientBalanceText}>
-                  Insufficient wallet balance. Need €{((parseFloat(seats) || 1) * (ride?.price_per_seat || 0)).toFixed(2)}
+                  Insufficient wallet balance. Need €{(seats * (ride?.price_per_seat || 0)).toFixed(2)}
                 </Text>
               )}
 

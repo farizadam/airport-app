@@ -1,6 +1,7 @@
 import api from "@/lib/api";
 import { PaginatedResponse, Ride, SearchFilters } from "@/types";
 import { create } from "zustand";
+import { useWalletStore } from "./walletStore";
 
 interface RideState {
   rides: Ride[];
@@ -227,6 +228,12 @@ export const useRideStore = create<RideState>((set) => ({
       set((state) => ({
         myRides: state.myRides.filter((ride) => ride.id !== id),
       }));
+      // Refresh wallet after cancellation (driver gets deducted, refunds processed)
+      try {
+        await useWalletStore.getState().getWallet();
+      } catch (e) {
+        console.log("Wallet refresh after cancel failed:", e);
+      }
     } catch (error: any) {
       throw new Error(error.response?.data?.message || "Failed to cancel ride");
     }

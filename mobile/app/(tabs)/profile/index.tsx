@@ -75,7 +75,7 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           await logout();
-          router.replace("/login");
+          // Root layout will redirect to /login when isAuthenticated becomes false
         },
       },
     ]);
@@ -94,7 +94,7 @@ export default function ProfileScreen() {
             try {
               await api.delete("/users/me");
               await logout();
-              router.replace("/login");
+              // Root layout will redirect to /login when isAuthenticated becomes false
             } catch (error) {
               toast.error("Error", "Failed to delete account");
             }
@@ -325,6 +325,14 @@ export default function ProfileScreen() {
     }
   };
 
+  // Hooks must be called before any early return
+  const age = calculateAge(user?.date_of_birth);
+  const profileCompletion = useMemo(() => getProfileCompletion(), [
+    user?.first_name, user?.last_name, user?.email, user?.phone, user?.date_of_birth,
+    user?.bio, user?.languages, user?.car_model, user?.car_color
+  ]);
+  const verificationStatus = getVerificationStatus();
+
   if (!user) {
     return (
       <SafeAreaView style={styles.container}>
@@ -335,13 +343,6 @@ export default function ProfileScreen() {
       </SafeAreaView>
     );
   }
-
-  const age = calculateAge(user.date_of_birth);
-  const profileCompletion = useMemo(() => getProfileCompletion(), [
-    user?.first_name, user?.last_name, user?.email, user?.phone, user?.date_of_birth,
-    user?.bio, user?.languages, user?.car_model, user?.car_color
-  ]);
-  const verificationStatus = getVerificationStatus();
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>

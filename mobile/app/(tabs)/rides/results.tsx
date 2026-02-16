@@ -36,7 +36,7 @@ interface SearchResult {
   departureTime: string;
   availableSeats?: number;
   luggageCapacity?: number;
-  luggagLeft?: number;
+  luggage_left?: number;
   luggageCount?: number;
   passengers?: number;
   pricePerSeat?: number;
@@ -266,7 +266,7 @@ export default function SearchResultsScreen() {
           departureTime: ride.departure_datetime || ride.datetime_start,
           availableSeats: availableSeats,
           luggageCapacity: ride.luggage_capacity,
-          luggagLeft: ride.luggage_left,
+          luggage_left: ride.luggage_left,
           pricePerSeat: ride.price_per_seat,
           matchType: isIntermediate ? "partial" : "exact",
           distance: isIntermediate ? Math.floor(distanceFromSearch) : (Math.floor(Math.random() * 5)), // Mock distance if not intermediate
@@ -349,7 +349,7 @@ export default function SearchResultsScreen() {
       if (filterMinLuggage !== "") {
         const minLuggage = parseInt(filterMinLuggage);
         if (!isNaN(minLuggage) && minLuggage > 0) {
-          if (result.type === "ride" && (result.luggagLeft ?? result.luggageCapacity ?? 0) < minLuggage) return false;
+          if (result.type === "ride" && (result.luggage_left ?? result.luggageCapacity ?? 0) < minLuggage) return false;
           if (result.type === "request" && (result.luggageCount ?? 0) < minLuggage) return false;
         }
       }
@@ -501,24 +501,28 @@ export default function SearchResultsScreen() {
             <Ionicons name="time-outline" size={16} color="#64748B" style={{ marginLeft: 10 }} />
             <Text style={styles.dateTimeText}>{dateTime.time}</Text>
           </View>
-          <View style={styles.seatsContainer}>
-            <Ionicons name="people-outline" size={16} color="#64748B" />
-            <Text style={styles.seatsText}>
-              {isRide ? `${item.availableSeats} seats` : `${item.passengers} passengers`}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+            <View style={styles.seatsContainer}>
+              <Ionicons name="people-outline" size={16} color="#64748B" />
+              <Text style={styles.seatsText}>
+                {isRide ? `${item.availableSeats} seats` : `${item.passengers} passengers`}
+              </Text>
+            </View>
+            <View style={[styles.seatsContainer, { marginLeft: 12 }]}>
+              <Ionicons name="briefcase-outline" size={16} color="#64748B" />
+              <Text style={styles.seatsText}>
+                {isRide
+                  ? `${(item.luggageCapacity ?? 0) - (item.luggage_left ?? item.luggageCapacity ?? 0)}/${item.luggageCapacity ?? 0} bags`
+                  : `${item.luggageCount ?? 0} bag(s)`}
+              </Text>
+            </View>
+            {isRide && item.pricePerSeat !== undefined && (
+              <View style={[styles.seatsContainer, { marginLeft: 12 }]}>
+                <Ionicons name="cash-outline" size={16} color="#16A34A" />
+                <Text style={[styles.seatsText, { color: '#16A34A', fontWeight: '600' }]}>{item.pricePerSeat} EUR</Text>
+              </View>
+            )}
           </View>
-          {isRide && (item.luggageCapacity ?? 0) > 0 && (
-            <View style={[styles.seatsContainer, { marginLeft: 10 }]}>
-              <Ionicons name="briefcase-outline" size={16} color="#64748B" />
-              <Text style={styles.seatsText}>{item.luggagLeft ?? item.luggageCapacity} bags</Text>
-            </View>
-          )}
-          {!isRide && (item.luggageCount ?? 0) > 0 && (
-            <View style={[styles.seatsContainer, { marginLeft: 10 }]}>
-              <Ionicons name="briefcase-outline" size={16} color="#64748B" />
-              <Text style={styles.seatsText}>{item.luggageCount} bag(s)</Text>
-            </View>
-          )}
         </View>
       </TouchableOpacity>
     );
@@ -713,6 +717,9 @@ export default function SearchResultsScreen() {
                 </Text>
                 <Text style={styles.modalInfoText}>
                   Seats needed: {selectedRequest.passengers}
+                </Text>
+                <Text style={styles.modalInfoText}>
+                  Luggage: {selectedRequest.luggageCount ?? 0} bag(s)
                 </Text>
                 <Text style={styles.modalInfoText}>
                   Route: {selectedRequest.pickupLocation} → {selectedRequest.dropoffLocation}
@@ -981,9 +988,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   resultFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "column",
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#F1F5F9",

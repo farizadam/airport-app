@@ -41,6 +41,8 @@ interface SearchResult {
   departureTime: string;
   availableSeats?: number;
   luggageCapacity?: number;
+  luggage_left?: number;
+  luggageCount?: number;
   passengers?: number;
   pricePerSeat?: number;
   // Driver/passenger details for profile avatar
@@ -69,6 +71,8 @@ interface SearchResult {
   startCoords?: { lat: number; lng: number };  // A coordinates
   stopCoords?: { lat: number; lng: number };   // B coordinates (intermediate)
   endCoords?: { lat: number; lng: number };    // C coordinates
+  // Direction info for icon display
+  direction?: "to_airport" | "from_airport";
 }
 
 const INITIAL_AIRPORT_REGION = { latitude: 48.8566, longitude: 2.3522, zoom: 5 };
@@ -264,6 +268,13 @@ export default function SearchScreen() {
           // Process rides
           if (Array.isArray(ridesData)) {
             ridesData.forEach((ride: any) => {
+              if (ride.driver) {
+                console.log("[API] Mapping ride driver:", {
+                  driver: ride.driver,
+                  driver_id: ride.driver_id,
+                  userId: ride.driver.id || ride.driver._id,
+                });
+              }
               const homeLocation = ride.home_address || ride.home_city || "Home location";
               const airportLocation = prefillAirport.name;
               
@@ -271,11 +282,22 @@ export default function SearchScreen() {
                 id: ride._id || ride.id,
                 type: "ride",
                 driverName: ride.driver?.first_name || "Driver",
+                driver: ride.driver ? {
+                  id: ride.driver.id || ride.driver._id || ride.driver_id || ride.user_id || ride.driver?.user_id || (ride as any).driver_id,
+                  _id: ride.driver._id || ride.driver.id || ride.driver_id || ride.user_id || ride.driver?.user_id || (ride as any).driver_id,
+                  first_name: ride.driver.first_name,
+                  last_name: ride.driver.last_name,
+                  avatar_url: ride.driver.avatar_url,
+                  rating: ride.driver.rating,
+                } : undefined,
                 pickupLocation: isToAirportSearch ? homeLocation : airportLocation,
                 dropoffLocation: isToAirportSearch ? airportLocation : homeLocation,
                 departureTime: ride.departure_datetime || ride.datetime_start,
                 availableSeats: ride.available_seats || ride.seats_left || ride.total_seats,
+                luggageCapacity: ride.luggage_capacity || 0,
+                luggage_left: ride.luggage_left,
                 pricePerSeat: ride.price_per_seat,
+                direction: direction,
               });
             });
           }
@@ -283,6 +305,13 @@ export default function SearchScreen() {
           // Process requests
           if (Array.isArray(requestsData)) {
             requestsData.forEach((request: any) => {
+              if (request.passenger) {
+                console.log("[API] Mapping request passenger:", {
+                  passenger: request.passenger,
+                  passenger_id: request.passenger_id,
+                  userId: request.passenger.id || request.passenger._id,
+                });
+              }
               const passengerLocation = request.location_address || request.location_city || "Passenger location";
               const airportLocation = prefillAirport.name;
               
@@ -290,10 +319,20 @@ export default function SearchScreen() {
                 id: request._id,
                 type: "request",
                 passengerName: request.passenger?.first_name || "Passenger",
+                passenger: request.passenger ? {
+                  id: request.passenger.id || request.passenger._id || request.passenger_id || request.user_id || request.passenger?.user_id || (request as any).passenger_id,
+                  _id: request.passenger._id || request.passenger.id || request.passenger_id || request.user_id || request.passenger?.user_id || (request as any).passenger_id,
+                  first_name: request.passenger.first_name,
+                  last_name: request.passenger.last_name,
+                  avatar_url: request.passenger.avatar_url,
+                  rating: request.passenger.rating,
+                } : undefined,
                 pickupLocation: isToAirportSearch ? passengerLocation : airportLocation,
                 dropoffLocation: isToAirportSearch ? airportLocation : passengerLocation,
                 departureTime: request.preferred_datetime,
                 passengers: request.seats_needed,
+                luggageCount: request.luggage_count ?? 0,
+                direction: direction,
               });
             });
           }
@@ -679,8 +718,8 @@ export default function SearchScreen() {
               type: "ride",
               driverName: ride.driver?.first_name || "Driver",
               driver: ride.driver ? {
-                id: ride.driver.id || ride.driver._id,
-                _id: ride.driver._id || ride.driver.id,
+                id: ride.driver.id || ride.driver._id || ride.driver_id || ride.user_id || ride.driver?.user_id || (ride as any).driver_id,
+                _id: ride.driver._id || ride.driver.id || ride.driver_id || ride.user_id || ride.driver?.user_id || (ride as any).driver_id,
                 first_name: ride.driver.first_name,
                 last_name: ride.driver.last_name,
                 avatar_url: ride.driver.avatar_url,
@@ -691,13 +730,15 @@ export default function SearchScreen() {
               dropoffLocation: isToAirportSearch ? airportLocation : (userSearchLocation || homeLocation),
               departureTime: ride.departure_datetime || ride.datetime_start,
               availableSeats: ride.available_seats || ride.seats_left || ride.total_seats,
-              luggageCapacity: ride.luggage_capacity || ride.luggage_left || 0,
+              luggageCapacity: ride.luggage_capacity || 0,
+              luggage_left: ride.luggage_left,
               pricePerSeat: ride.price_per_seat,
               // Multi-stop route info - only show if distance > 20km
               driverStartLocation: driverStart,
               driverEndLocation: driverEnd,
               userStopLocation: isIntermediate ? userSearchLocation : undefined,
               isIntermediateStop: isIntermediate,
+              direction: searchDirection,
               // Coordinates for map
               startCoords: isToAirportSearch 
                 ? (driverHomeLat && driverHomeLng ? { lat: driverHomeLat, lng: driverHomeLng } : undefined)
@@ -754,8 +795,8 @@ export default function SearchScreen() {
               type: "request",
               passengerName: request.passenger?.first_name || "Passenger",
               passenger: request.passenger ? {
-                id: request.passenger.id || request.passenger._id,
-                _id: request.passenger._id || request.passenger.id,
+                id: request.passenger.id || request.passenger._id || request.passenger_id || request.user_id || request.passenger?.user_id || (request as any).passenger_id,
+                _id: request.passenger._id || request.passenger.id || request.passenger_id || request.user_id || request.passenger?.user_id || (request as any).passenger_id,
                 first_name: request.passenger.first_name,
                 last_name: request.passenger.last_name,
                 avatar_url: request.passenger.avatar_url,
@@ -765,6 +806,8 @@ export default function SearchScreen() {
               dropoffLocation: isToAirportSearch ? airportLocation : passengerLocation,
               departureTime: request.preferred_datetime,
               passengers: request.seats_needed,
+              luggageCount: request.luggage_count ?? 0,
+              direction: searchDirection,
               // Multi-stop route info - only show if distance > 20km
               driverStartLocation: isIntermediate ? userSearchLocation : undefined,
               driverEndLocation: requestEnd,
@@ -1471,7 +1514,7 @@ export default function SearchScreen() {
                   : 2.3522;
                 
                 return (
-                  <TouchableOpacity
+                  <View
                     key={`${result.type}-${result.id}`}
                     style={[
                       styles.resultCard,
@@ -1480,28 +1523,7 @@ export default function SearchScreen() {
                         borderLeftColor: isRide ? "#3B82F6" : "#8B5CF6",
                       }
                     ]}
-                    onPress={() => {
-                      if (isRide) {
-                        const navParams: any = { id: result.id };
-                        // If we have a specific location search (not just airport), pass it
-                        if (locationCoords && locationAddress) {
-                          navParams.pickupLat = locationCoords.lat;
-                          navParams.pickupLng = locationCoords.lng;
-                          navParams.pickupAddress = locationAddress;
-                        }
-                      
-                        router.push({
-                          pathname: '/(tabs)/rides/[id]',
-                          params: navParams
-                        });
-                      } else {
-                        router.push({
-                          pathname: '/request-details/[id]',
-                          params: { id: result.id }
-                        });
-                      }
-                    }}
-                >
+                  >
                   <View style={styles.resultCardHeader}>
                     <View style={[
                       styles.typeBadge, 
@@ -1517,7 +1539,7 @@ export default function SearchScreen() {
                         color={isRide ? "#3B82F6" : "#8B5CF6"} 
                       />
                       <Text style={[styles.typeBadgeText, { color: isRide ? "#2563EB" : "#7C3AED" }]}>
-                        {isRide ? "🚗 OFFER" : "✋ REQUEST"}
+                        {isRide ? "OFFER" : "REQUEST"}
                       </Text>
                     </View>
                     {isRide && result.pricePerSeat && (
@@ -1530,10 +1552,41 @@ export default function SearchScreen() {
                   <TouchableOpacity 
                     style={styles.resultUserInfo}
                     onPress={() => {
-                      const userId = isRide 
-                        ? (result.driver?.id || result.driver?._id)
-                        : (result.passenger?.id || result.passenger?._id);
-                      if (userId) router.push({ pathname: "/user-profile/[id]", params: { id: userId } });
+                      let userId;
+                      let driverObj, passengerObj;
+                      
+                      if (isRide && result.driver) {
+                        driverObj = result.driver;
+                        console.log("[Profile] Driver object:", JSON.stringify(driverObj, null, 2));
+                        // Try multiple ways to extract the ID
+                        userId = driverObj.id || driverObj._id;
+                        // If still not a string, try stringifying just the ID part
+                        if (userId && typeof userId === 'object') {
+                          userId = userId._id || userId.id || String(userId);
+                        }
+                        if (userId) {
+                          userId = String(userId).trim();
+                        }
+                      } else if (!isRide && result.passenger) {
+                        passengerObj = result.passenger;
+                        console.log("[Profile] Passenger object:", JSON.stringify(passengerObj, null, 2));
+                        userId = passengerObj.id || passengerObj._id;
+                        if (userId && typeof userId === 'object') {
+                          userId = userId._id || userId.id || String(userId);
+                        }
+                        if (userId) {
+                          userId = String(userId).trim();
+                        }
+                      }
+                      
+                      console.log("[Profile] Final userId:", userId, "Type:", typeof userId);
+                      
+                      if (userId && userId !== "[object Object]") {
+                        console.log("[Profile] Navigating to user profile with ID:", userId);
+                        router.push({ pathname: "/user-profile/[id]", params: { id: userId } });
+                      } else {
+                        console.log("[Profile] ❌ Cannot extract valid userId");
+                      }
                     }}
                     activeOpacity={0.7}
                   >
@@ -1581,92 +1634,121 @@ export default function SearchScreen() {
                     </View>
                   </TouchableOpacity>
 
-                  {/* Route Summary Section */}
-                  <View style={styles.routeSummarySection}>
-                    <Text style={styles.routeSummaryTitle}>
-                      {result.isIntermediateStop ? "🛣️ Route with pickup stop" : "🛣️ Direct route"}
-                    </Text>
-                  </View>
-
-                  <View style={styles.resultRoute}>
+                  {/* Route and Details - Touchable for navigation */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (isRide) {
+                        const navParams: any = { id: result.id };
+                        if (locationCoords && locationAddress) {
+                          navParams.pickupLat = locationCoords.lat;
+                          navParams.pickupLng = locationCoords.lng;
+                          navParams.pickupAddress = locationAddress;
+                        }
+                        router.push({
+                          pathname: '/(tabs)/rides/[id]',
+                          params: navParams
+                        });
+                      } else {
+                        router.push({
+                          pathname: '/request-details/[id]',
+                          params: { id: result.id }
+                        });
+                      }
+                    }}
+                  >
+                    {/* Route Display with TripCard Style */}
+                    <View style={styles.resultRoute}>
                     {/* Show multi-stop route A → B → C if location is intermediate (>20km) */}
                     {result.isIntermediateStop && result.userStopLocation ? (
                       <>
                         {/* A - Start location */}
-                        <View style={styles.routePointEnhanced}>
-                          <View style={styles.routePointLeft}>
-                            <View style={[styles.routeDotLarge, { backgroundColor: "#10B981" }]}>
-                              <Text style={styles.routeDotText}>A</Text>
-                            </View>
-                            <View style={styles.routeConnector} />
+                        <View style={styles.routePointSimple}>
+                          <View style={[styles.iconContainerSmall, { 
+                            backgroundColor: (result.direction || "to_airport") === "to_airport" ? "#D1FAE5" : "#DBEAFE" 
+                          }]}>
+                            <Ionicons 
+                              name={(result.direction || "to_airport") === "to_airport" ? "location-sharp" : "airplane"} 
+                              size={14} 
+                              color={(result.direction || "to_airport") === "to_airport" ? "#10B981" : "#3B82F6"} 
+                            />
                           </View>
-                          <View style={styles.routePointContent}>
-                            <Text style={styles.routePointLabel}>START POINT</Text>
-                            <Text style={styles.routePointAddress} numberOfLines={2}>
-                              {result.driverStartLocation}
-                            </Text>
-                          </View>
+                          <Text style={styles.routeTextSmall} numberOfLines={1}>
+                            {result.driverStartLocation}
+                          </Text>
                         </View>
                         
-                        {/* B - Intermediate stop (pickup/dropoff point) */}
-                        <View style={styles.routePointEnhanced}>
-                          <View style={styles.routePointLeft}>
-                            <View style={[styles.routeDotLarge, { backgroundColor: "#F59E0B", borderWidth: 3, borderColor: "#FCD34D" }]}>
-                              <Text style={styles.routeDotText}>B</Text>
-                            </View>
-                            <View style={styles.routeConnector} />
+                        {/* Connector */}
+                        <View style={styles.routeLineContainerSmall}>
+                          <View style={{ width: 2, height: 12, backgroundColor: '#CBD5E1' }} />
+                          <Ionicons name="chevron-down" size={12} color="#CBD5E1" style={{ marginTop: -2 }} />
+                        </View>
+                        
+                        {/* B - Intermediate stop (highlighted) */}
+                        <View style={[styles.routePointSimple, { backgroundColor: '#FEF3C7', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, marginHorizontal: -8 }]}>
+                          <View style={[styles.iconContainerSmall, { backgroundColor: "#FCD34D", borderWidth: 2, borderColor: "#F59E0B" }]}>
+                            <Text style={{ fontSize: 9, fontWeight: "700", color: "#92400E" }}>●</Text>
                           </View>
-                          <View style={[styles.routePointContent, styles.routePointHighlight]}>
-                            <Text style={[styles.routePointLabel, { color: "#F59E0B" }]}>
-                              📍 {isRide ? "YOUR PICKUP" : "PASSENGER PICKUP"}
-                            </Text>
-                            <Text style={[styles.routePointAddress, { color: "#92400E", fontWeight: "600" }]} numberOfLines={2}>
-                              {result.userStopLocation}
-                            </Text>
-                          </View>
+                          <Text style={[styles.routeTextSmall, { fontWeight: "600", color: "#92400E" }]} numberOfLines={1}>
+                            📍 {result.userStopLocation}
+                          </Text>
+                        </View>
+                        
+                        {/* Connector */}
+                        <View style={styles.routeLineContainerSmall}>
+                          <View style={{ width: 2, height: 12, backgroundColor: '#CBD5E1' }} />
+                          <Ionicons name="chevron-down" size={12} color="#CBD5E1" style={{ marginTop: -2 }} />
                         </View>
                         
                         {/* C - End location */}
-                        <View style={styles.routePointEnhanced}>
-                          <View style={styles.routePointLeft}>
-                            <View style={[styles.routeDotLarge, { backgroundColor: "#EF4444" }]}>
-                              <Text style={styles.routeDotText}>C</Text>
-                            </View>
+                        <View style={styles.routePointSimple}>
+                          <View style={[styles.iconContainerSmall, { 
+                            backgroundColor: (result.direction || "to_airport") === "to_airport" ? "#DBEAFE" : "#D1FAE5" 
+                          }]}>
+                            <Ionicons 
+                              name={(result.direction || "to_airport") === "to_airport" ? "airplane" : "location-sharp"} 
+                              size={14} 
+                              color={(result.direction || "to_airport") === "to_airport" ? "#3B82F6" : "#10B981"} 
+                            />
                           </View>
-                          <View style={styles.routePointContent}>
-                            <Text style={styles.routePointLabel}>DESTINATION</Text>
-                            <Text style={styles.routePointAddress} numberOfLines={2}>
-                              {result.driverEndLocation}
-                            </Text>
-                          </View>
+                          <Text style={styles.routeTextSmall} numberOfLines={1}>
+                            {result.driverEndLocation}
+                          </Text>
                         </View>
                       </>
                     ) : (
                       <>
                         {/* Simple A → B route */}
-                        <View style={styles.routePointEnhanced}>
-                          <View style={styles.routePointLeft}>
-                            <View style={[styles.routeDotLarge, { backgroundColor: "#3B82F6" }]}>
-                              <Text style={styles.routeDotText}>A</Text>
-                            </View>
-                            <View style={styles.routeConnector} />
+                        <View style={styles.routePointSimple}>
+                          <View style={[styles.iconContainerSmall, { 
+                            backgroundColor: (result.direction || "to_airport") === "to_airport" ? "#D1FAE5" : "#DBEAFE" 
+                          }]}>
+                            <Ionicons 
+                              name={(result.direction || "to_airport") === "to_airport" ? "location-sharp" : "airplane"} 
+                              size={14} 
+                              color={(result.direction || "to_airport") === "to_airport" ? "#10B981" : "#3B82F6"} 
+                            />
                           </View>
-                          <View style={styles.routePointContent}>
-                            <Text style={styles.routePointLabel}>PICKUP</Text>
-                            <Text style={styles.routePointAddress} numberOfLines={2}>{result.pickupLocation}</Text>
-                          </View>
+                          <Text style={styles.routeTextSmall} numberOfLines={1}>{result.pickupLocation}</Text>
                         </View>
                         
-                        <View style={styles.routePointEnhanced}>
-                          <View style={styles.routePointLeft}>
-                            <View style={[styles.routeDotLarge, { backgroundColor: "#EF4444" }]}>
-                              <Text style={styles.routeDotText}>B</Text>
-                            </View>
+                        {/* Connector */}
+                        <View style={styles.routeLineContainerSmall}>
+                          <View style={{ width: 2, height: 12, backgroundColor: '#CBD5E1' }} />
+                          <Ionicons name="chevron-down" size={12} color="#CBD5E1" style={{ marginTop: -2 }} />
+                        </View>
+                        
+                        <View style={styles.routePointSimple}>
+                          <View style={[styles.iconContainerSmall, { 
+                            backgroundColor: (result.direction || "to_airport") === "to_airport" ? "#DBEAFE" : "#D1FAE5" 
+                          }]}>
+                            <Ionicons 
+                              name={(result.direction || "to_airport") === "to_airport" ? "airplane" : "location-sharp"} 
+                              size={14} 
+                              color={(result.direction || "to_airport") === "to_airport" ? "#3B82F6" : "#10B981"} 
+                            />
                           </View>
-                          <View style={styles.routePointContent}>
-                            <Text style={styles.routePointLabel}>DESTINATION</Text>
-                            <Text style={styles.routePointAddress} numberOfLines={2}>{result.dropoffLocation}</Text>
-                          </View>
+                          <Text style={styles.routeTextSmall} numberOfLines={1}>{result.dropoffLocation}</Text>
                         </View>
                       </>
                     )}
@@ -1685,7 +1767,16 @@ export default function SearchScreen() {
                         {isRide ? `${result.availableSeats} seats` : `${result.passengers} pax`}
                       </Text>
                     </View>
+                    <View style={styles.resultSeats}>
+                      <Ionicons name="briefcase-outline" size={14} color="#64748B" />
+                      <Text style={styles.resultSeatsText}>
+                        {isRide
+                          ? `${(result.luggageCapacity ?? 0) - (result.luggage_left ?? result.luggageCapacity ?? 0)}/${result.luggageCapacity ?? 0} bags`
+                          : `${result.luggageCount ?? 0} bag(s)`}
+                      </Text>
+                    </View>
                   </View>
+                  </TouchableOpacity>
 
                   {/* Action Button */}
                   <TouchableOpacity
@@ -1722,7 +1813,7 @@ export default function SearchScreen() {
                       {isRide ? "Book This Ride" : "Offer a Ride"}
                     </Text>
                   </TouchableOpacity>
-                </TouchableOpacity>
+                </View>
               );
             })}
           </View>
@@ -2521,10 +2612,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   resultRoute: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
+    marginBottom: 14,
+    paddingLeft: 4,
   },
   routeSummarySection: {
     marginBottom: 8,
@@ -2619,8 +2708,12 @@ const styles = StyleSheet.create({
   },
   resultFooter: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
   },
   resultDateTime: {
     flexDirection: "row",
@@ -2636,9 +2729,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   resultSeatsText: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#64748B",
     marginLeft: 4,
+  },
+  // TripCard-style route display
+  routePointSimple: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconContainerSmall: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  routeLineContainerSmall: {
+    width: 20,
+    alignItems: 'center',
+    marginRight: 8,
+    marginLeft: 0,
+  },
+  routeTextSmall: {
+    fontSize: 13,
+    color: "#475569",
+    flex: 1,
   },
   resultActionButton: {
     flexDirection: "row",

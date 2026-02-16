@@ -150,14 +150,12 @@ export default function MyOffersScreen() {
             {item.available_seats || item.seats_left} seats
           </Text>
         </View>
-        {(item.luggage_capacity > 0 || item.luggage_left > 0) && (
-          <View style={styles.detailItem}>
-            <Ionicons name="briefcase-outline" size={14} color="#666" />
-            <Text style={styles.detailText}>
-              {item.luggage_left ?? item.luggage_capacity} luggage
-            </Text>
-          </View>
-        )}
+        <View style={styles.detailItem}>
+          <Ionicons name="briefcase-outline" size={14} color="#666" />
+          <Text style={styles.detailText}>
+            {(item.luggage_capacity ?? 0) - (item.luggage_left ?? item.luggage_capacity ?? 0)}/{item.luggage_capacity ?? 0} bags
+          </Text>
+        </View>
         <View style={styles.detailItem}>
           <Ionicons name="cash-outline" size={14} color="#666" />
           <Text style={styles.detailText}>

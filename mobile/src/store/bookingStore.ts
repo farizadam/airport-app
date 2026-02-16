@@ -1,6 +1,7 @@
 import api from "@/lib/api";
 import { Booking } from "@/types";
 import { create } from "zustand";
+import { useWalletStore } from "./walletStore";
 
 interface BookingState {
   myBookings: Booking[];
@@ -32,7 +33,7 @@ export const useBookingStore = create<BookingState>((set) => ({
     try {
       set({ isLoading: true });
       const response = await api.get<{ data: Booking[] }>(
-        "/my-bookings"
+        "/bookings/my-bookings"
       );
       set({ myBookings: response.data.data });
     } catch (error: any) {
@@ -99,6 +100,12 @@ export const useBookingStore = create<BookingState>((set) => ({
           (booking) => booking.id !== bookingId
         ),
       }));
+      // Refresh wallet after cancellation (passenger gets refund)
+      try {
+        await useWalletStore.getState().getWallet();
+      } catch (e) {
+        console.log("Wallet refresh after cancel failed:", e);
+      }
     } catch (error: any) {
       throw new Error(
         error.response?.data?.message || "Failed to cancel booking"

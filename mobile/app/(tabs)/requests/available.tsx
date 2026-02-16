@@ -263,8 +263,12 @@ export default function AvailableRequestsScreen() {
           </Text>
         </View>
         <View style={styles.detailItem}>
+          <Ionicons name="people-outline" size={14} color="#666" />
+          <Text style={styles.detailText}>{item.seats_needed} seat(s)</Text>
+        </View>
+        <View style={styles.detailItem}>
           <Ionicons name="briefcase-outline" size={14} color="#666" />
-          <Text style={styles.detailText}>{item.luggage_count} luggage</Text>
+          <Text style={styles.detailText}>{item.luggage_count ?? 0} bag(s)</Text>
         </View>
       </View>
 

@@ -24,7 +24,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -116,7 +115,8 @@ export default function RideDetailsScreen() {
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
-  const [seats, setSeats] = useState("1");
+  const [seats, setSeats] = useState(1);
+  const [luggageCount, setLuggageCount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
   const [actionId, setActionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -225,13 +225,18 @@ export default function RideDetailsScreen() {
   }, [id, user, ride, fetchRideById, getRideBookings, getMyBookings]);
 
   const handleBooking = async () => {
-    if (!seats || parseInt(seats) < 1) {
+    if (seats < 1) {
       toast.warning("Invalid Seats", "Please enter a valid number of seats");
       return;
     }
 
-    if (parseInt(seats) > (ride?.seats_left || 0)) {
+    if (seats > (ride?.seats_left || 0)) {
       toast.warning("Not Enough Seats", "Not enough seats available");
+      return;
+    }
+
+    if (luggageCount > (ride?.luggage_left ?? 0)) {
+      toast.warning("Not Enough Luggage Space", `Only ${ride?.luggage_left ?? 0} luggage spot(s) available`);
       return;
     }
 
@@ -249,7 +254,7 @@ export default function RideDetailsScreen() {
       
       console.log("Processing wallet payment for ride:", id, "seats:", seats);
       
-      const result = await payWithWallet(id!, parseInt(seats));
+      const result = await payWithWallet(id!, seats, luggageCount);
       
       if (result.success) {
         // Refresh bookings
@@ -275,7 +280,8 @@ export default function RideDetailsScreen() {
       // Step 1: Create PaymentIntent (NO booking yet)
       const response = await api.post("/payments/create-intent", {
         rideId: id,
-        seats: parseInt(seats),
+        seats: seats,
+        luggage_count: luggageCount,
       });
       
       console.log("Payment intent response:", response.data);
@@ -311,7 +317,8 @@ export default function RideDetailsScreen() {
       const completeResponse = await api.post("/payments/complete", {
         paymentIntentId: paymentIntentId,
         rideId: id,
-        seats: parseInt(seats),
+        seats: seats,
+        luggage_count: luggageCount,
       });
       
       console.log("Complete response:", completeResponse.data);
@@ -773,7 +780,7 @@ export default function RideDetailsScreen() {
               <Ionicons name="people-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Seats</Text>
               <Text style={styles.detailValue}>
-                {ride.seats_left} / {ride.seats_total}
+                {(ride.seats_total ?? 0) - (ride.seats_left ?? 0)} / {ride.seats_total}
               </Text>
             </View>
             <View style={styles.detailItem}>
@@ -781,6 +788,13 @@ export default function RideDetailsScreen() {
               <Text style={styles.detailLabel}>Price</Text>
               <Text style={[styles.detailValue, { color: "#16A34A" }]}>
                 {ride.price_per_seat} EUR
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Ionicons name="bag-handle-outline" size={20} color="#64748B" />
+              <Text style={styles.detailLabel}>Luggage</Text>
+              <Text style={styles.detailValue}>
+                {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? 0)} / {ride.luggage_capacity ?? 0}
               </Text>
             </View>
             <TouchableOpacity 
@@ -896,6 +910,14 @@ export default function RideDetailsScreen() {
                     requested
                   </Text>
                 </View>
+                {(booking.luggage_count ?? 0) > 0 && (
+                  <View style={styles.passengerRow}>
+                    <Ionicons name="bag-handle-outline" size={16} color="#64748B" />
+                    <Text style={styles.bookingInfo}>
+                      {booking.luggage_count} luggage
+                    </Text>
+                  </View>
+                )}
 
                 {/* Accepted: Show Phone and Chat */}
                 {booking.status === "accepted" && (
@@ -1044,23 +1066,59 @@ export default function RideDetailsScreen() {
                 Available: {ride.seats_left} seats
               </Text>
               <Text style={styles.modalInfoText}>
+                Luggage space: {ride.luggage_left ?? 0} / {ride.luggage_capacity ?? 0}
+              </Text>
+              <Text style={styles.modalInfoText}>
                 Price: {ride.price_per_seat} EUR per seat
               </Text>
             </View>
 
+            {/* Seats Stepper */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Number of Seats</Text>
-              <TextInput
-                style={styles.input}
-                value={seats}
-                onChangeText={setSeats}
-                keyboardType="number-pad"
-                placeholder="1"
-              />
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity
+                  style={[styles.stepperButton, seats <= 1 && styles.stepperButtonDisabled]}
+                  onPress={() => setSeats(Math.max(1, seats - 1))}
+                  disabled={seats <= 1}
+                >
+                  <Ionicons name="remove" size={20} color={seats <= 1 ? '#CBD5E1' : '#1E293B'} />
+                </TouchableOpacity>
+                <Text style={styles.stepperValue}>{seats}</Text>
+                <TouchableOpacity
+                  style={[styles.stepperButton, seats >= (ride.seats_left ?? 1) && styles.stepperButtonDisabled]}
+                  onPress={() => setSeats(Math.min(ride.seats_left ?? 1, seats + 1))}
+                  disabled={seats >= (ride.seats_left ?? 1)}
+                >
+                  <Ionicons name="add" size={20} color={seats >= (ride.seats_left ?? 1) ? '#CBD5E1' : '#1E293B'} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Luggage Count Stepper */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Number of Luggage</Text>
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity
+                  style={[styles.stepperButton, luggageCount <= 0 && styles.stepperButtonDisabled]}
+                  onPress={() => setLuggageCount(Math.max(0, luggageCount - 1))}
+                  disabled={luggageCount <= 0}
+                >
+                  <Ionicons name="remove" size={20} color={luggageCount <= 0 ? '#CBD5E1' : '#1E293B'} />
+                </TouchableOpacity>
+                <Text style={styles.stepperValue}>{luggageCount}</Text>
+                <TouchableOpacity
+                  style={[styles.stepperButton, luggageCount >= (ride.luggage_left ?? 0) && styles.stepperButtonDisabled]}
+                  onPress={() => setLuggageCount(Math.min(ride.luggage_left ?? 0, luggageCount + 1))}
+                  disabled={luggageCount >= (ride.luggage_left ?? 0)}
+                >
+                  <Ionicons name="add" size={20} color={luggageCount >= (ride.luggage_left ?? 0) ? '#CBD5E1' : '#1E293B'} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.totalPrice}>
-              Total: {(parseFloat(seats) || 0) * ride.price_per_seat} EUR
+              Total: {seats * ride.price_per_seat} EUR
             </Text>
 
             {/* Payment Method Selection */}
@@ -1072,15 +1130,15 @@ export default function RideDetailsScreen() {
                 style={[
                   styles.paymentMethodOption,
                   paymentMethod === 'wallet' && styles.paymentMethodSelected,
-                  (wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && styles.paymentMethodDisabled
+                  (wallet?.balance || 0) < seats * (ride?.price_per_seat || 0) * 100 && styles.paymentMethodDisabled
                 ]}
                 onPress={() => {
-                  const totalCents = (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100;
+                  const totalCents = seats * (ride?.price_per_seat || 0) * 100;
                   if ((wallet?.balance || 0) >= totalCents) {
                     setPaymentMethod('wallet');
                   }
                 }}
-                disabled={(wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100}
+                disabled={(wallet?.balance || 0) < seats * (ride?.price_per_seat || 0) * 100}
               >
                 <View style={styles.paymentMethodLeft}>
                   <Ionicons 
@@ -1105,7 +1163,7 @@ export default function RideDetailsScreen() {
                     <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
                   </View>
                 )}
-                {(wallet?.balance || 0) >= (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && (
+                {(wallet?.balance || 0) >= seats * (ride?.price_per_seat || 0) * 100 && (
                   <View style={styles.noFeeBadge}>
                     <Text style={styles.noFeeText}>No fees!</Text>
                   </View>
@@ -1113,9 +1171,9 @@ export default function RideDetailsScreen() {
               </TouchableOpacity>
 
               {/* Insufficient balance warning */}
-              {(wallet?.balance || 0) < (parseFloat(seats) || 1) * (ride?.price_per_seat || 0) * 100 && (
+              {(wallet?.balance || 0) < seats * (ride?.price_per_seat || 0) * 100 && (
                 <Text style={styles.insufficientBalanceText}>
-                  Insufficient wallet balance. Need €{((parseFloat(seats) || 1) * (ride?.price_per_seat || 0)).toFixed(2)}
+                  Insufficient wallet balance. Need €{(seats * (ride?.price_per_seat || 0)).toFixed(2)}
                 </Text>
               )}
 
@@ -1720,5 +1778,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 4,
+  },
+  stepperContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#F8FAFC",
+  },
+  stepperButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepperButtonDisabled: {
+    backgroundColor: "#F1F5F9",
+    opacity: 0.5,
+  },
+  stepperValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1E293B",
+    minWidth: 30,
+    textAlign: "center",
   },
 });
