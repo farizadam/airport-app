@@ -375,18 +375,16 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
            <View style={styles.tripDateTime}>
              <Ionicons name="calendar-outline" size={14} color="#64748B" />
              <Text style={styles.tripDateTimeText}>{dateTime.date}</Text>
-             <Ionicons name="time-outline" size={14} color="#64748B" style={{ marginLeft: 8 }} />
+             <Ionicons name="time-outline" size={14} color="#64748B" style={{ marginLeft: 6 }} />
              <Text style={styles.tripDateTimeText}>{dateTime.time}</Text>
            </View>
-           {/* Added more spacing here */}
-           <View style={{ width: 16 }} />
            {(item.seats !== undefined || item.seats_left !== undefined || item.totalSeats !== undefined) && (
-             <View style={styles.tripSeats}>
+             <View style={[styles.tripSeats, { marginLeft: 12 }]}>
                <Ionicons name="people-outline" size={14} color="#64748B" />
                <Text style={styles.tripSeatsText}>{seatsDisplay}</Text>
              </View>
            )}
-           <View style={[styles.tripSeats, { marginLeft: 8 }]}>
+           <View style={[styles.tripSeats, { marginLeft: 10 }]}>
              <Ionicons name="briefcase-outline" size={14} color="#64748B" />
              <Text style={styles.tripSeatsText}>
                {item.luggage_capacity !== undefined
@@ -501,7 +499,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
   },
   tripDateTime: {
     flexDirection: "row",
