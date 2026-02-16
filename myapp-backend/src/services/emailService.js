@@ -1,36 +1,32 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-// Configure via env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FROM_EMAIL
-// Using port 465 with SSL for better cloud provider compatibility
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465,
-  secure: process.env.SMTP_SECURE !== "false", // Default to true for port 465
-  auth: process.env.SMTP_USER
-    ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-    : undefined,
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-});
+// Use Resend API for reliable email delivery on cloud platforms
+// Set env: RESEND_API_KEY and FROM_EMAIL
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 async function sendEmail({ to, subject, text, html }) {
-  const from = process.env.FROM_EMAIL || process.env.SMTP_USER;
-  if (!from) throw new Error("FROM_EMAIL or SMTP_USER must be configured");
-  return transporter.sendMail({ from, to, subject, text, html });
+  if (!resend) {
+    throw new Error("RESEND_API_KEY must be configured");
+  }
+
+  const from = process.env.FROM_EMAIL || "onboarding@resend.dev";
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to,
+    subject,
+    text,
+    html,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  console.log("Email sent via Resend:", data?.id);
+  return data;
 }
 
 module.exports = { sendEmail };
-
-// Improve reliability with connection pooling and sensible timeouts
-try {
-  transporter.pool = true;
-  transporter.verify().catch((err) => {
-    console.warn(
-      "Mailer verify failed:",
-      err && err.message ? err.message : err,
-    );
-  });
-} catch (e) {
-  // ignore
-}
