@@ -167,20 +167,9 @@ class AuthController {
           .status(400)
           .json({ success: false, message: "Phone number required" });
 
-      // 2. Verify Email OTP (DEV BYPASS: skip if DEV_BYPASS_OTP is set)
+      // 2. Verify Email OTP — DEV BYPASS: always skip for now
       const emailNormalized = (email || "").toLowerCase().trim();
-      const devBypass = process.env.DEV_BYPASS_OTP === "true";
-      if (!devBypass) {
-        const otpDoc = await EmailOtp.findOne({ email: emailNormalized });
-        logStep("email_otp_lookup");
-        if (!otpDoc || !otpDoc.verified) {
-          return res
-            .status(400)
-            .json({ success: false, message: "Email not verified" });
-        }
-      } else {
-        console.log("DEV BYPASS: Skipping email verification check for", emailNormalized);
-      }
+      console.log("DEV BYPASS: Skipping email verification check for", emailNormalized);
 
       // 3. Duplicate Checks
       const existing = await User.findOne({
