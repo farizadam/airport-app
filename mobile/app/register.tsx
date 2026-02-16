@@ -350,6 +350,13 @@ export default function RegisterScreen() {
   };
 
   const verifyPhoneOtp = async () => {
+    // DEV MODE: Accept 123456 as bypass code
+    if (enteredPhoneOtp === "123456") {
+      toast.success("Phone Verified", "DEV: Phone verified with bypass code");
+      setStep((s) => Math.min(4, s + 1));
+      return;
+    }
+
     if (!verificationId) {
       toast.error("Error", "No verification ID. Request code first.");
       return;

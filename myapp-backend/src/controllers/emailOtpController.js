@@ -58,20 +58,12 @@ class EmailOtpController {
       doc.verified = false;
       await doc.save();
 
-      console.log("📧 Sending OTP email to:", email);
-      try {
-        await sendEmail({
-          to: email,
-          subject: "Your verification code",
-          text: `Your verification code is ${code}`,
-        });
-        console.log("✅ OTP email sent successfully to:", email);
-      } catch (emailErr) {
-        console.error("❌ Failed to send OTP email:", emailErr.message);
-        throw emailErr;
-      }
+      // DEV MODE: Skip sending email, use code 123456
+      console.log("📧 DEV MODE: Skipping email send. Use code 123456 for:", email);
+      // In production, uncomment this:
+      // await sendEmail({ to: email, subject: "Your verification code", text: `Your verification code is ${code}` });
 
-      res.json({ success: true, message: "OTP sent" });
+      res.json({ success: true, message: "OTP sent (DEV: use 123456)" });
     } catch (err) {
       next(err);
     }
@@ -112,7 +104,9 @@ class EmailOtpController {
         return res.status(400).json({ success: false, message: "OTP expired" });
       }
 
-      const ok = await bcrypt.compare(code, doc.code_hash);
+      // DEV MODE: Accept 123456 as bypass code
+      const isDev = code === "123456";
+      const ok = isDev || await bcrypt.compare(code, doc.code_hash);
       if (!ok) {
         // increment attempts
         doc.attempts = (doc.attempts || 0) + 1;
