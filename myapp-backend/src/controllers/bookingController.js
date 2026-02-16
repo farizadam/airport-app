@@ -543,28 +543,9 @@ class BookingController {
       console.log(`[BookingController] Booking ${id} saved with new status: ${booking.status}`);
 
       // Send notifications for status change (cache invalidation handled by NotificationService)
+      // Note: Bookings are automatic, so no accept/reject notifications
       if (status && status !== oldStatus) {
-        if (status === "accepted") {
-          await NotificationService.notifyBookingAccepted(
-            booking.passenger_id.toString(),
-            {
-              id: booking._id.toString(),
-              ride_id: booking.ride_id._id.toString(),
-              driver_first_name: ride.driver_id?.first_name,
-              driver_last_name: ride.driver_id?.last_name,
-            }
-          );
-          console.log(`[BookingController] Sent accepted notification for booking ${id}`);
-        } else if (status === "rejected") {
-          await NotificationService.notifyBookingRejected(
-            booking.passenger_id.toString(),
-            {
-              id: booking._id.toString(),
-              ride_id: booking.ride_id._id.toString(),
-            }
-          );
-          console.log(`[BookingController] Sent rejected notification for booking ${id}`);
-        } else if (status === "cancelled") {
+        if (status === "cancelled") {
           await NotificationService.notifyBookingCancelled(
             booking.ride_id.driver_id.toString(),
             {

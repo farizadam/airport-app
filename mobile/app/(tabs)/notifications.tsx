@@ -106,6 +106,16 @@ const getNotifConfig = (item: any): NotifConfig => {
           ? `${p.passenger_name} accepted your offer`
           : "Your offer has been accepted",
       };
+    case "offer_rejected":
+      return {
+        icon: "thumbs-down",
+        color: "#EF4444",
+        bgColor: "#FEE2E2",
+        title: "Offer Not Accepted",
+        subtitle: p.passenger_name
+          ? `${p.passenger_name} chose another offer`
+          : "Your offer was not accepted",
+      };
     case "offer_received":
       return {
         icon: "hand-right",
@@ -161,12 +171,11 @@ const formatTime = (dateStr: string) => {
 
 const SUPPORTED_TYPES = [
   "booking_request",
-  "booking_accepted",
-  "booking_rejected",
   "booking_cancelled",
   "ride_cancelled",
   "request_accepted",
   "offer_accepted",
+  "offer_rejected",
   "offer_received",
   "chat_message",
   "rate_driver",
@@ -203,8 +212,6 @@ const NotificationsScreen = observer(() => {
           router.push({ pathname: "/ride-details/[id]", params: { id: p.ride_id } });
         }
         break;
-      case "booking_accepted":
-      case "booking_rejected":
       case "booking_cancelled":
         if (p.ride_id) {
           router.push({ pathname: "/ride-details/[id]", params: { id: p.ride_id } });
@@ -221,6 +228,7 @@ const NotificationsScreen = observer(() => {
         }
         break;
       case "offer_accepted":
+      case "offer_rejected":
         if (p.request_id) {
           router.push({ pathname: "/request-details/[id]", params: { id: p.request_id } });
         }

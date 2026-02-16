@@ -17,14 +17,15 @@ class NotificationService {
    */
   static TYPES = {
     BOOKING_REQUEST: "booking_request",
-    BOOKING_ACCEPTED: "booking_accepted",
-    BOOKING_REJECTED: "booking_rejected",
     BOOKING_CANCELLED: "booking_cancelled",
     RIDE_CANCELLED: "ride_cancelled",
     CHAT_MESSAGE: "chat_message",
     RATE_DRIVER: "rate_driver",
     RATE_PASSENGER: "rate_passenger",
     OFFER_RECEIVED: "offer_received",
+    REQUEST_ACCEPTED: "request_accepted",
+    OFFER_ACCEPTED: "offer_accepted",
+    OFFER_REJECTED: "offer_rejected",
   };
 
   /**
@@ -45,34 +46,7 @@ class NotificationService {
     });
   }
 
-  /**
-   * Send booking accepted notification to passenger
-   */
-  static async notifyBookingAccepted(passengerId, bookingData) {
-    return await this.createAndInvalidateCache(passengerId, {
-      user_id: passengerId,
-      type: this.TYPES.BOOKING_ACCEPTED,
-      payload: {
-        booking_id: bookingData.id,
-        ride_id: bookingData.ride_id,
-        driver_name: `${bookingData.driver_first_name} ${bookingData.driver_last_name}`,
-      },
-    });
-  }
 
-  /**
-   * Send booking rejected notification to passenger
-   */
-  static async notifyBookingRejected(passengerId, bookingData) {
-    return await this.createAndInvalidateCache(passengerId, {
-      user_id: passengerId,
-      type: this.TYPES.BOOKING_REJECTED,
-      payload: {
-        booking_id: bookingData.id,
-        ride_id: bookingData.ride_id,
-      },
-    });
-  }
 
   /**
    * Send booking cancelled notification
@@ -208,6 +182,60 @@ class NotificationService {
         price_per_seat: offerData.price_per_seat,
         message: offerData.message,
         ride_id: offerData.ride_id,
+      },
+    });
+  }
+
+  /**
+   * Send request accepted notification to passenger
+   * Called when a driver accepts a ride request
+   */
+  static async notifyRequestAccepted(passengerId, requestData) {
+    return await this.createAndInvalidateCache(passengerId, {
+      user_id: passengerId,
+      type: this.TYPES.REQUEST_ACCEPTED,
+      payload: {
+        request_id: requestData.request_id,
+        driver_id: requestData.driver_id,
+        driver_name: requestData.driver_name,
+        ride_id: requestData.ride_id,
+        message: requestData.message || "Your ride request has been accepted by a driver.",
+      },
+    });
+  }
+
+  /**
+   * Send offer accepted notification to driver
+   * Called when a passenger accepts a driver's offer
+   */
+  static async notifyOfferAccepted(driverId, offerData) {
+    return await this.createAndInvalidateCache(driverId, {
+      user_id: driverId,
+      type: this.TYPES.OFFER_ACCEPTED,
+      payload: {
+        request_id: offerData.request_id,
+        passenger_id: offerData.passenger_id,
+        passenger_name: offerData.passenger_name,
+        ride_id: offerData.ride_id,
+        message: offerData.message || "Your offer has been accepted by the passenger.",
+      },
+    });
+  }
+
+  /**
+   * Send offer rejected notification to driver
+   * Called when a passenger rejects or another offer is accepted
+   */
+  static async notifyOfferRejected(driverId, offerData) {
+    return await this.createAndInvalidateCache(driverId, {
+      user_id: driverId,
+      type: this.TYPES.OFFER_REJECTED,
+      payload: {
+        request_id: offerData.request_id,
+        passenger_id: offerData.passenger_id,
+        passenger_name: offerData.passenger_name,
+        ride_id: offerData.ride_id,
+        message: offerData.message || "Your offer was not accepted.",
       },
     });
   }
