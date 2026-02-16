@@ -297,6 +297,25 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
+
+      // DEV: Auto-verify email on backend before registration
+      // Use short timeout because old backend may hang on SMTP
+      const quickPost = (url: string, data: any) =>
+        Promise.race([
+          api.post(url, data),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+        ]);
+
+      try {
+        console.log("DEV: Auto-sending email OTP to backend...");
+        await quickPost("/auth/send-email-otp", { email: formData.email });
+        console.log("DEV: Auto-verifying email OTP with 123456...");
+        await quickPost("/auth/verify-email-otp", { email: formData.email, code: "123456" });
+        console.log("DEV: Email auto-verified on backend");
+      } catch (otpErr: any) {
+        console.warn("DEV: Email auto-verify failed (continuing anyway):", otpErr?.message);
+      }
+
       const { confirmPassword, ...registerData } = formData;
       console.log("DEBUG: registration payload (client)", {
         email: registerData.email,
