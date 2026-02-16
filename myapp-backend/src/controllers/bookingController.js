@@ -403,15 +403,15 @@ class BookingController {
                   }
                 }
 
-              } else if (booking.payment_method === "wallet") {
-                // WALLET PAYMENT REFUND
+              } else if (booking.payment_method === "wallet" || (!booking.payment_method && !booking.payment_intent_id)) {
+                // WALLET PAYMENT REFUND (handles both new and legacy bookings without payment_method field)
                 console.log(`[BookingCancel] Refunding wallet payment for booking ${id}`);
                 
                 const totalAmount = Math.round(ride.price_per_seat * booking.seats * 100);
                 const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
                 const driverEarnings = Math.round(totalAmount * ((100 - feePercentage) / 100));
 
-                // Credit passenger's wallet with FULL amount (100%)
+                // Credit passenger's wallet with FULL amount (100%) - NO FEE DEDUCTION
                 const passengerWallet = await Wallet.getOrCreateWallet(booking.passenger_id);
                 passengerWallet.balance += totalAmount;
                 await passengerWallet.save();
