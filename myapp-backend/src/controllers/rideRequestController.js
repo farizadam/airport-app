@@ -642,14 +642,20 @@ exports.acceptOffer = async (req, res, next) => {
       "offers.driver",
     ]);
 
-    // Get driver name for notification
-    const driver = await User.findById(offer.driver).select('first_name last_name');
+    // Get driver name for notification (safely extract ID)
+    const driverId = offer.driver._id || offer.driver;
+    const driver = await User.findById(driverId).select('first_name last_name');
     const driverName = driver ? `${driver.first_name} ${driver.last_name}` : 'Driver';
 
+    // Get passenger name (safely extract ID)
+    const passengerId = request.passenger._id || request.passenger;
+    const passenger = await User.findById(passengerId).select('first_name last_name');
+    const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
+
     // Notify passenger (request owner) that their request was accepted
-    await NotificationService.notifyRequestAccepted(request.passenger, {
+    await NotificationService.notifyRequestAccepted(passengerId, {
       request_id: request._id,
-      driver_id: offer.driver,
+      driver_id: driverId,
       driver_name: driverName,
       ride_id: offer.ride,
       message: "Your ride request has been accepted by a driver.",
@@ -657,12 +663,9 @@ exports.acceptOffer = async (req, res, next) => {
 
     // Notify the accepted driver
     if (offer && offer.driver) {
-      const passenger = await User.findById(request.passenger).select('first_name last_name');
-      const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
-      
-      await NotificationService.notifyOfferAccepted(offer.driver, {
+      await NotificationService.notifyOfferAccepted(driverId, {
         request_id: request._id,
-        passenger_id: request.passenger,
+        passenger_id: passengerId,
         passenger_name: passengerName,
         ride_id: offer.ride,
         message: "Your offer has been accepted by the passenger.",
@@ -676,12 +679,10 @@ exports.acceptOffer = async (req, res, next) => {
     // Notify rejected drivers
     for (const o of request.offers) {
       if (o._id.toString() !== offer_id && o.driver) {
-        const passenger = await User.findById(request.passenger).select('first_name last_name');
-        const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
-        
-        await NotificationService.notifyOfferRejected(o.driver, {
+        const rejectedDriverId = o.driver._id || o.driver;
+        await NotificationService.notifyOfferRejected(rejectedDriverId, {
           request_id: request._id,
-          passenger_id: request.passenger,
+          passenger_id: passengerId,
           passenger_name: passengerName,
           ride_id: o.ride,
           message: "Your offer was not accepted.",
@@ -936,25 +937,28 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
       "offers.driver",
     ]);
 
-    // Get driver and passenger names for notifications
-    const driver = await User.findById(offer.driver).select('first_name last_name');
+    // Get driver and passenger names for notifications (safely extract IDs)
+    const driverId = offer.driver._id || offer.driver;
+    const driver = await User.findById(driverId).select('first_name last_name');
     const driverName = driver ? `${driver.first_name} ${driver.last_name}` : 'Driver';
-    const passenger = await User.findById(request.passenger).select('first_name last_name');
+    
+    const passengerId = request.passenger._id || request.passenger;
+    const passenger = await User.findById(passengerId).select('first_name last_name');
     const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
 
     // Notifications
-    await NotificationService.notifyRequestAccepted(request.passenger, {
+    await NotificationService.notifyRequestAccepted(passengerId, {
       request_id: request._id,
-      driver_id: offer.driver,
+      driver_id: driverId,
       driver_name: driverName,
       ride_id: offer.ride,
       message: "Your ride request has been accepted and paid.",
     });
 
     if (offer && offer.driver) {
-      await NotificationService.notifyOfferAccepted(offer.driver, {
+      await NotificationService.notifyOfferAccepted(driverId, {
         request_id: request._id,
-        passenger_id: request.passenger,
+        passenger_id: passengerId,
         passenger_name: passengerName,
         ride_id: offer.ride,
         message: "Your offer has been accepted and paid by the passenger.",
@@ -964,9 +968,10 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
     // Notify rejected drivers
     for (const o of request.offers) {
       if (o._id.toString() !== offer_id && o.driver) {
-        await NotificationService.notifyOfferRejected(o.driver, {
+        const rejectedDriverId = o.driver._id || o.driver;
+        await NotificationService.notifyOfferRejected(rejectedDriverId, {
           request_id: request._id,
-          passenger_id: request.passenger,
+          passenger_id: passengerId,
           passenger_name: passengerName,
           ride_id: o.ride,
           message: "Your offer was not accepted.",
@@ -1029,12 +1034,15 @@ exports.rejectOffer = async (req, res, next) => {
 
     // Notify the driver that their offer was rejected
     if (offer.driver) {
-      const passenger = await User.findById(request.passenger).select('first_name last_name');
+      const driverId = offer.driver._id || offer.driver;
+      const passengerId = request.passenger._id || request.passenger;
+      
+      const passenger = await User.findById(passengerId).select('first_name last_name');
       const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
       
-      await NotificationService.notifyOfferRejected(offer.driver, {
+      await NotificationService.notifyOfferRejected(driverId, {
         request_id: request._id,
-        passenger_id: request.passenger,
+        passenger_id: passengerId,
         passenger_name: passengerName,
         ride_id: offer.ride,
         message: "Your offer was rejected by the passenger.",
