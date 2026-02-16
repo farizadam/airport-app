@@ -331,16 +331,10 @@ export default function RegisterScreen() {
       // Update formData with full E.164 phone
       setFormData((prev) => ({ ...prev, phone: fullPhone }));
 
-      // Use modular signInWithPhoneNumber API
-      try {
-        const confirmation = await signInWithPhoneNumber(auth, fullPhone);
-        setVerificationId(confirmation);
-        setPhoneOtpSent(true);
-        toast.info("OTP Sent", "A verification code was sent to your phone.");
-      } catch (phoneAuthErr: any) {
-        console.error("Phone auth error", phoneAuthErr);
-        toast.error("Error", phoneAuthErr.message || "Phone auth is not available in this build.");
-      }
+      // DEV MODE: Skip Firebase phone auth entirely - just use 123456
+      console.log("DEV MODE: Skipping Firebase phone auth. Use code 123456");
+      setPhoneOtpSent(true);
+      toast.info("OTP Sent", "DEV MODE: Use code 123456");
     } catch (err: any) {
       console.error("Phone OTP send error", err);
       toast.error("Error", err.message || "Failed to send OTP");
@@ -420,39 +414,24 @@ export default function RegisterScreen() {
       return;
     }
 
-    (async () => {
-      try {
-        setLoading(true);
-        const resp = await api.post("/auth/send-email-otp", {
-          email: formData.email,
-        });
-        if (resp.data && resp.data.success) {
-          setEmailOtpSent(true);
-          setResendSeconds(60);
-          try {
-            emailOtpInputRef.current?.focus();
-          } catch (_) {}
-          toast.info("OTP Sent", "A verification code was sent to your email.");
-        } else {
-          throw new Error(resp.data?.message || "Failed to send OTP");
-        }
-      } catch (err: any) {
-        console.error("Send email OTP error", err);
-        const status = err?.response?.status;
-        const message =
-          err?.response?.data?.message || err.message || "Failed to send OTP";
-        if (status === 429) {
-          toast.warning("Too Many Requests", message);
-        } else {
-          toast.error("Error", message);
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
+    // DEV MODE: Skip API call entirely - just use 123456
+    console.log("DEV MODE: Skipping email OTP API. Use code 123456");
+    setEmailOtpSent(true);
+    setResendSeconds(60);
+    try {
+      emailOtpInputRef.current?.focus();
+    } catch (_) {}
+    toast.info("OTP Sent", "DEV MODE: Use code 123456");
   };
 
   const verifyEmailOtp = () => {
+    // DEV MODE: Accept 123456 as bypass code
+    if (enteredEmailOtp === "123456") {
+      toast.success("Email Verified", "DEV: Email verified with bypass code");
+      setStep((s) => Math.min(4, s + 1));
+      return;
+    }
+
     (async () => {
       try {
         setLoading(true);
