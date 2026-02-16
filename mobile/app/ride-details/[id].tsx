@@ -483,7 +483,7 @@ export default function RideDetailsScreen() {
               <Text style={styles.bookingBannerSubtitle}>{cfg.subtitle}</Text>
               {myBooking.seats && (
                 <Text style={styles.bookingBannerMeta}>
-                  {myBooking.seats} seat(s) booked
+                  {myBooking.seats} seat(s)
                 </Text>
               )}
               {((myBooking.luggage_count ?? 0) > 0) && (
@@ -574,14 +574,14 @@ export default function RideDetailsScreen() {
               <Ionicons name="people-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Seats</Text>
               <Text style={styles.detailValue}>
-                {ride.seats_total - ride.seats_left}/{ride.seats_total} booked
+                {ride.seats_total - ride.seats_left}/{ride.seats_total}
               </Text>
             </View>
             <View style={styles.detailItem}>
               <Ionicons name="briefcase-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Luggage</Text>
               <Text style={styles.detailValue}>
-                {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? ride.luggage_capacity ?? 0)}/{ride.luggage_capacity ?? 0} booked
+                {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? ride.luggage_capacity ?? 0)}/{ride.luggage_capacity ?? 0}
               </Text>
             </View>
             <View style={styles.detailItem}>
@@ -982,10 +982,10 @@ export default function RideDetailsScreen() {
             <View style={styles.modalInfo}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Text style={styles.modalInfoText}>
-                  Seats: {(ride.seats_total - ride.seats_left)}/{ride.seats_total} booked
+                  Seats: {(ride.seats_total - ride.seats_left)}/{ride.seats_total}
                 </Text>
                 <Text style={styles.modalInfoText}>
-                  Luggage: {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? ride.luggage_capacity ?? 0)}/{ride.luggage_capacity ?? 0} booked
+                  Luggage: {(ride.luggage_capacity ?? 0) - (ride.luggage_left ?? ride.luggage_capacity ?? 0)}/{ride.luggage_capacity ?? 0}
                 </Text>
               </View>
               <Text style={styles.modalInfoText}>
