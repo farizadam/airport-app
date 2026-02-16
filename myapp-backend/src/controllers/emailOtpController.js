@@ -58,11 +58,18 @@ class EmailOtpController {
       doc.verified = false;
       await doc.save();
 
-      await sendEmail({
-        to: email,
-        subject: "Your verification code",
-        text: `Your verification code is ${code}`,
-      });
+      console.log("📧 Sending OTP email to:", email);
+      try {
+        await sendEmail({
+          to: email,
+          subject: "Your verification code",
+          text: `Your verification code is ${code}`,
+        });
+        console.log("✅ OTP email sent successfully to:", email);
+      } catch (emailErr) {
+        console.error("❌ Failed to send OTP email:", emailErr.message);
+        throw emailErr;
+      }
 
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
