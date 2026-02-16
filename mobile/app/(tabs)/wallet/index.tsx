@@ -331,8 +331,6 @@ export default function WalletScreen() {
             </Text>
           </View>
         </View>
-
-        <View style={{ height: 100 }} />
       </ScrollView>
     </SafeAreaView>
   );
