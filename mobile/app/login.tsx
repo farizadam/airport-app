@@ -2,7 +2,7 @@ import { useAuthStore } from "@/store/authStore";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +12,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Keyboard,
+  Animated,
 } from "react-native";
 import { toast } from "../src/store/toastStore";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -43,6 +45,31 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const headerHeight = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      Animated.timing(headerHeight, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      Animated.timing(headerHeight, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleGoogleLogin = async () => {
     if (!GoogleSignin) {
@@ -117,36 +144,55 @@ export default function LoginScreen() {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      {/* Header with gradient */}
-      <LinearGradient colors={["#3B82F6", "#1E40AF"]} style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
+  const animatedPaddingTop = headerHeight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [20, 35],
+  });
+  const animatedPaddingBottom = headerHeight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [12, 25],
+  });
+  const animatedLogoScale = headerHeight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
 
-        <View style={styles.headerContent}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="airplane" size={32} color="#3B82F6" />
-          </View>
+  return (
+    <SafeAreaView style={styles.container} edges={[]}>
+      {/* Header with gradient */}
+      <Animated.View style={{ paddingTop: animatedPaddingTop, paddingBottom: animatedPaddingBottom }}>
+        <LinearGradient colors={["#3B82F6", "#1E40AF"]} style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+
+          <Animated.View style={[styles.headerContent, { opacity: animatedLogoScale, transform: [{ scale: animatedLogoScale }] }]}>
+            <View style={styles.logoCircle}>
+              <Ionicons name="airplane" size={28} color="#3B82F6" />
+            </View>
+          </Animated.View>
           <Text style={styles.headerTitle}>Welcome Back!</Text>
-          <Text style={styles.headerSubtitle}>
-            Sign in to continue your journey
-          </Text>
-        </View>
-      </LinearGradient>
+          {!keyboardVisible && (
+            <Text style={styles.headerSubtitle}>
+              Sign in to continue your journey
+            </Text>
+          )}
+        </LinearGradient>
+      </Animated.View>
 
       <KeyboardAvoidingView
         style={styles.formContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           <View style={styles.form}>
             {/* Email Input */}
@@ -319,47 +365,49 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   header: {
-    paddingTop: 50,
-    paddingBottom: 40,
-    paddingHorizontal: 24,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    alignItems: "center",
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
+    alignSelf: "flex-start",
+    marginBottom: 8,
   },
   headerContent: {
     alignItems: "center",
   },
   logoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "bold",
     color: "#fff",
-    marginBottom: 8,
+    marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 16,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.9)",
   },
   formContainer: {
     flex: 1,

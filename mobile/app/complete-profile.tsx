@@ -299,7 +299,7 @@ export default function CompleteProfileScreen() {
   const currentStepLabel = step === 0 && needsPhone ? "Phone Number" : "ID Verification";
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <LinearGradient colors={["#3B82F6", "#2563EB"]} style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.logoCircle}>
@@ -332,12 +332,14 @@ export default function CompleteProfileScreen() {
 
       <KeyboardAvoidingView
         style={styles.formContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
+        keyboardVerticalOffset={100}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           <View style={styles.form}>
             {/* STEP 0: Phone Number */}

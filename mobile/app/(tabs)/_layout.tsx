@@ -77,7 +77,7 @@ const TabLayout = observer(() => {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: () => (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? '#18181B' : '#FAFAFA' }]}>
             {/* Main gradient background */}
             <LinearGradient
               colors={
@@ -104,7 +104,7 @@ const TabLayout = observer(() => {
           height: 70 + insets.bottom,
           paddingTop: 12,
           paddingBottom: insets.bottom + 8,
-          backgroundColor: "transparent",
+          backgroundColor: isDark ? '#18181B' : '#FAFAFA',
         },
         tabBarLabelStyle: {
           fontSize: 11,

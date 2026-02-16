@@ -392,7 +392,7 @@ export default function RideDetailsScreen() {
   const hasAcceptedBookings = rideBookings?.some((b: any) => b.status === 'accepted');
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']} key={id}>
+    <SafeAreaView style={styles.container} edges={['top']} key={id}>
       <Stack.Screen options={{ headerShown: false }} />
       {/* ... header ... */}
       <View style={styles.header}>
@@ -972,8 +972,9 @@ export default function RideDetailsScreen() {
         onRequestClose={() => setBookingModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
           style={{ flex: 1 }}
+          keyboardVerticalOffset={20}
         >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>

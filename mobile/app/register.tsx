@@ -18,6 +18,8 @@ import {
   Image,
   Modal,
   FlatList,
+  Keyboard,
+  Animated,
 } from "react-native";
 import { toast } from "../src/store/toastStore";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -177,6 +179,31 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const headerHeight = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      Animated.timing(headerHeight, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      Animated.timing(headerHeight, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const [phoneOtpSent, setPhoneOtpSent] = useState(false);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
@@ -475,50 +502,73 @@ export default function RegisterScreen() {
     }
   }, [emailOtpSent]);
 
+  const animatedPaddingTop = headerHeight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [15, 30],
+  });
+  const animatedPaddingBottom = headerHeight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [8, 20],
+  });
+  const animatedLogoScale = headerHeight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <LinearGradient colors={["#3B82F6", "#2563EB"]} style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <Animated.View style={{ paddingTop: animatedPaddingTop, paddingBottom: animatedPaddingBottom }}>
+        <LinearGradient colors={["#3B82F6", "#2563EB"]} style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
 
-        <View style={styles.headerContent}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="airplane" size={32} color="#3B82F6" />
-          </View>
-          <Text style={styles.headerTitle}>Create Account</Text>
-          <Text style={styles.headerSubtitle}>
-            Join the CovoitAir community
-          </Text>
-          <Text style={styles.stepIndicator}>Step {step + 1} of 5</Text>
+          <View style={styles.headerContent}>
+            <Animated.View style={{ opacity: animatedLogoScale, transform: [{ scale: animatedLogoScale }] }}>
+              <View style={styles.logoCircle}>
+                <Ionicons name="airplane" size={24} color="#3B82F6" />
+              </View>
+            </Animated.View>
+            <Text style={styles.headerTitle}>Create Account</Text>
+            {!keyboardVisible && (
+              <Text style={styles.headerSubtitle}>
+                Join the CovoitAir community
+              </Text>
+            )}
+            <Text style={styles.stepIndicator}>Step {step + 1} of 5</Text>
 
-          <View style={styles.progressBarContainer}>
-            <View style={styles.progressBar}>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.progressSegment,
-                    i <= step && styles.progressSegmentActive,
-                  ]}
-                />
-              ))}
-            </View>
+            {!keyboardVisible && (
+              <View style={styles.progressBarContainer}>
+                <View style={styles.progressBar}>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.progressSegment,
+                        i <= step && styles.progressSegmentActive,
+                      ]}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
+      </Animated.View>
 
       <KeyboardAvoidingView
         style={styles.formContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           <View style={styles.form}>
             {step === 0 && (
@@ -1167,53 +1217,55 @@ const styles = StyleSheet.create({
 
   /* ===== HEADER ===== */
   header: {
-    paddingTop: 50,
-    paddingBottom: 60,
-    paddingHorizontal: 24,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    alignItems: "center",
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
+    alignSelf: "flex-start",
+    marginBottom: 6,
   },
   headerContent: {
     alignItems: "center",
   },
   logoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 4,
+    elevation: 3,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#fff",
-    marginBottom: 8,
+    marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 15,
     color: "rgba(255,255,255,0.9)",
-    marginBottom: 20,
+    marginBottom: 8,
   },
   stepIndicator: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: 12,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 6,
   },
   progressBarContainer: {
     width: "100%",

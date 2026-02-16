@@ -46,7 +46,7 @@
         "react-native-fbsdk-next",
         {
           "appID": "34107866202160782",
-          "clientToken": "YOUR_FACEBOOK_CLIENT_TOKEN",
+          "clientToken": "f2683a169ad7adb7038da96172f67f2f",
           "displayName": "CovoitAir",
           "scheme": "fb34107866202160782",
           "advertiserIDCollectionEnabled": false,

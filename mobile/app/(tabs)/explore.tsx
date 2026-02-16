@@ -883,7 +883,7 @@ export default function MyTripsScreen() {
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <LinearGradient
         colors={["#1E3A8A", "#3B82F6"]}

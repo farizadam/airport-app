@@ -225,7 +225,7 @@ const NotificationScreen = observer(() => {
   )};
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Text style={styles.header}>Notifications</Text>
       <FlatList
         data={notificationStore.notifications}

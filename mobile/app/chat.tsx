@@ -334,7 +334,7 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
       
       {/* Custom Header */}
@@ -376,8 +376,8 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        behavior="padding"
+        keyboardVerticalOffset={90}
       >
         {/* Trip Info Banner - Clickable to view ride */}
         {chatInfo?.ride && (

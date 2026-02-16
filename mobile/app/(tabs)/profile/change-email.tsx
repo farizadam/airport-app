@@ -105,10 +105,11 @@ export default function ChangeEmailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         style={styles.keyboardView}
+        keyboardVerticalOffset={100}
       >
         {/* Header */}
         <View style={styles.header}>

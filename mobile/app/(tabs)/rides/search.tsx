@@ -940,9 +940,9 @@ export default function SearchScreen() {
 
   const renderLocationStep = () => (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior="padding"
       style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 120 : 0}
+      keyboardVerticalOffset={100}
     >
       <View style={styles.stepContent}>
         <Text style={styles.stepTitle}>

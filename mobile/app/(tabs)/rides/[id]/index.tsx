@@ -474,7 +474,7 @@ export default function RideDetailsScreen() {
     : new Date();
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]} key={id}>
+    <SafeAreaView style={styles.container} edges={["top"]} key={id}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}

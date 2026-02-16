@@ -270,7 +270,7 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Header */}
       <LinearGradient colors={["#3B82F6", "#1E40AF"]} style={styles.header}>
         <TouchableOpacity
@@ -336,12 +336,14 @@ export default function ForgotPasswordScreen() {
 
       <KeyboardAvoidingView
         style={styles.formContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
+        keyboardVerticalOffset={100}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           <View style={styles.form}>
             {/* ===== STEP 1: Choose identifier ===== */}

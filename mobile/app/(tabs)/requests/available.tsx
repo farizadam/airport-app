@@ -581,8 +581,9 @@ export default function AvailableRequestsScreen() {
       {/* Offer Modal */}
       <Modal visible={offerModalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
           style={styles.modalOverlay}
+          keyboardVerticalOffset={20}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalContent}>

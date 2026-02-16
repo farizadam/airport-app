@@ -280,7 +280,7 @@ export default function RequestDetailsScreen() {
   const airportName = typeof request.airport === 'object' ? request.airport?.name : "Airport";
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']} key={id}>
+    <SafeAreaView style={styles.container} edges={['top']} key={id}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -755,8 +755,9 @@ export default function RequestDetailsScreen() {
         onRequestClose={() => setOfferModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
           style={{ flex: 1 }}
+          keyboardVerticalOffset={20}
         >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
