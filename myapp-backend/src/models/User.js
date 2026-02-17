@@ -87,13 +87,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    facebook_id: {
-      type: String,
-      default: null,
-      unique: true,
-      sparse: true,
-      index: true,
-    },
     auth_provider: {
       type: String,
       enum: ["email", "google", "facebook"],
