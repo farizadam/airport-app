@@ -87,13 +87,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    google_id: {
-      type: String,
-      default: null,
-      unique: true,
-      sparse: true,
-      index: true,
-    },
     facebook_id: {
       type: String,
       default: null,

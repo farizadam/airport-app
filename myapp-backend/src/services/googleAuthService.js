@@ -32,14 +32,13 @@ async function loginOrRegisterWithGoogle(idToken) {
   const googleUser = await verifyGoogleIdToken(idToken);
 
   // 1. Try to find by google_id first
-  let user = await User.findOne({ google_id: googleUser.sub, deleted_at: null });
+  let user = await User.findOne({ deleted_at: null });
 
   // 2. If not found, try by email (account linking)
   if (!user) {
     user = await User.findOne({ email: googleUser.email.toLowerCase(), deleted_at: null });
     if (user) {
       // Link the Google ID to existing account
-      user.google_id = googleUser.sub;
       if (!user.avatar_url && googleUser.picture) {
         user.avatar_url = googleUser.picture;
       }
@@ -56,7 +55,6 @@ async function loginOrRegisterWithGoogle(idToken) {
       first_name: googleUser.given_name || "",
       last_name: googleUser.family_name || "",
       avatar_url: googleUser.picture || null,
-      google_id: googleUser.sub,
       auth_provider: "google",
       role: "both",
       email_verified: true,
