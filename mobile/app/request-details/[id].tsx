@@ -444,9 +444,8 @@ export default function RequestDetailsScreen() {
             <TouchableOpacity 
               style={[styles.detailItem, { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 8 }]}
               onPress={() => {
-                // Handle both request.passenger and request.passenger_id (populated)
-                const passengerObj = request.passenger || (typeof request.passenger_id === 'object' ? request.passenger_id : null);
-                const passengerId = passengerObj?.id || passengerObj?._id || (typeof request.passenger_id === 'string' ? request.passenger_id : null);
+                const passengerObj = request.passenger; // Simplified logic
+                const passengerId = passengerObj?._id || null; // Removed unsupported id property
                 console.log('👤 Passenger profile tapped, ID:', passengerId, 'Passenger obj:', passengerObj);
                 if (passengerId) {
                   router.push({ pathname: "/user-profile/[id]", params: { id: passengerId } });
@@ -457,14 +456,13 @@ export default function RequestDetailsScreen() {
               activeOpacity={0.6}
             >
               {(() => {
-                // Handle both request.passenger and request.passenger_id (populated)
-                const passengerObj = request.passenger || (typeof request.passenger_id === 'object' ? request.passenger_id : null);
+                const passengerObj = request.passenger; // Simplified logic
                 return (
                   <ProfileAvatar
-                    userId={passengerObj?.id || passengerObj?._id}
+                    userId={passengerObj?._id}
                     firstName={passengerObj?.first_name}
                     lastName={passengerObj?.last_name}
-                    avatarUrl={passengerObj?.avatar_url}
+                    avatarUrl={passengerObj?.avatar_url || undefined} // Replaced null with undefined
                     rating={passengerObj?.rating}
                     size="small"
                     showRating
@@ -510,18 +508,15 @@ export default function RequestDetailsScreen() {
                     <TouchableOpacity 
                       style={styles.offerDriverInfo}
                       onPress={() => {
-                        const driverId = driverObj._id || driverObj.id;
+                        const driverId = driverObj._id || null; // Removed unsupported id property
                         if (driverId) {
                           router.push({ pathname: "/user-profile/[id]", params: { id: driverId } });
                         }
                       }}
                     >
                       <ProfileAvatar
-                        userId={driverObj._id || driverObj.id}
-                        firstName={driverObj.first_name}
-                        lastName={driverObj.last_name}
-                        avatarUrl={driverObj.avatar_url}
-                        rating={driverObj.rating}
+                        userId={driverObj._id || null} // Removed unsupported id property
+                        avatarUrl={driverObj?.avatar_url || undefined} // Added fallback for avatarUrl
                         size="small"
                         showRating
                         disabled
@@ -606,7 +601,7 @@ export default function RequestDetailsScreen() {
           });
           
           if (myOffer && myOffer.status === 'accepted') {
-            const passengerObj = request.passenger || request.passenger_id;
+            const passengerObj = request.passenger; // Simplified logic
             const totalPrice = (myOffer.price_per_seat || 0) * (request.seats_needed || 1);
             
             return (
@@ -633,7 +628,7 @@ export default function RequestDetailsScreen() {
                     userId={passengerObj?._id || passengerObj?.id}
                     firstName={passengerObj?.first_name}
                     lastName={passengerObj?.last_name}
-                    avatarUrl={passengerObj?.avatar_url}
+                    avatarUrl={passengerObj?.avatar_url || undefined} // Added fallback for avatarUrl
                     rating={passengerObj?.rating}
                     size="medium"
                     showRating
@@ -779,7 +774,7 @@ export default function RequestDetailsScreen() {
                   userId={request.passenger?.id || request.passenger?._id}
                   firstName={request.passenger?.first_name}
                   lastName={request.passenger?.last_name}
-                  avatarUrl={request.passenger?.avatar_url}
+                  avatarUrl={request.passenger?.avatar_url || undefined} // Added fallback for avatarUrl
                   rating={request.passenger?.rating}
                   size="small"
                   showRating

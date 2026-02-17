@@ -7,7 +7,7 @@ export interface User {
   phone?: string;
   phone_number?: string;
   role: "driver" | "passenger" | "both";
-  avatar_url?: string;
+  avatar_url?: string; // Ensure compatibility
   rating?: number;
   rating_count?: number;
   created_at: string;
@@ -20,9 +20,7 @@ export interface User {
   trips_completed?: number;
   email_verified?: boolean;
   phone_verified?: boolean;
-  auth_provider?: "email" | "google" | "facebook";
-  google_id?: string;
-  facebook_id?: string;
+  auth_provider?: "email" | "facebook";
   profile_complete?: boolean;
   id_image_front_url?: string;
   id_image_back_url?: string;
@@ -155,12 +153,15 @@ export interface RideRequest {
     last_name: string;
     phone: string;
     rating: number;
+    avatar_url?: string; // Added missing property
   };
   airport: {
     _id: string;
     name: string;
     iata_code: string;
     city: string;
+    latitude?: number; // Added missing property
+    longitude?: number; // Added missing property
   } | string;
   direction: "to_airport" | "from_airport";
   location_address: string;

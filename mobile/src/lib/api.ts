@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 // Determine API URL based on platform and environment
 const getApiBaseUrl = (): string => {
   // PRODUCTION URL - Always use this for builds distributed to clients
-  const PRODUCTION_URL = "https://airport-app-production.up.railway.app/api/v1";
+  const PRODUCTION_URL = "https://airportsss-production.up.railway.app/api/v1";
   
   // 1. Manual: If specific env var is set, use it (Good for Production)
   if (process.env.EXPO_PUBLIC_API_BASE_URL) {
