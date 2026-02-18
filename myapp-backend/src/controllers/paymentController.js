@@ -243,45 +243,38 @@ exports.completePayment = async (req, res, next) => {
     }
     
     console.log("Payment verified:", paymentIntent.status);
-    
-    // Find the ride
-    const ride = await Ride.findById(rideId);
+
+    const luggage = Math.max(0, parseInt(luggage_count) || 0);
+    const rideFilter = { _id: rideId, seats_left: { $gte: seats } };
+    if (luggage > 0) rideFilter.luggage_left = { $gte: luggage };
+    const rideUpdate = { $inc: { seats_left: -seats, luggage_left: -luggage } };
+
+    const ride = await Ride.findOneAndUpdate(rideFilter, rideUpdate, { new: true });
     if (!ride) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Ride not found" 
-      });
-    }
-    
-    // Check seats again
-    if (ride.seats_left < seats) {
-      // Refund the payment since seats are no longer available
       await stripe.refunds.create({ payment_intent: paymentIntentId });
-      return res.status(400).json({ 
-        success: false, 
-        message: "Seats no longer available. Payment refunded." 
+      return res.status(400).json({
+        success: false,
+        message: "Seats no longer available. Payment refunded.",
       });
     }
-    
-    // Create the booking with status 'accepted' (already paid)
+
     let booking;
     try {
       booking = await Booking.create({
         ride_id: rideId,
         passenger_id: userId,
         seats: seats,
-        luggage_count: parseInt(luggage_count) || 0,
-        status: 'accepted', // Already paid, so automatically accepted
-        payment_status: 'paid',
-        payment_method: 'card',
+        luggage_count: luggage,
+        status: "accepted",
+        payment_status: "paid",
+        payment_method: "card",
         payment_intent_id: paymentIntentId,
       });
     } catch (bookingError) {
-      // If booking creation fails, refund the Stripe payment
-      console.error("Booking creation failed, issuing refund:", bookingError.message);
+      console.error("Booking creation failed, rolling back seats and issuing refund:", bookingError.message);
+      await Ride.findByIdAndUpdate(rideId, { $inc: { seats_left: seats, luggage_left: luggage } }, { new: true });
       try {
         await stripe.refunds.create({ payment_intent: paymentIntentId });
-        console.log("Refund issued for payment intent:", paymentIntentId);
       } catch (refundError) {
         console.error("CRITICAL: Refund also failed for PI:", paymentIntentId, refundError.message);
       }
@@ -290,17 +283,8 @@ exports.completePayment = async (req, res, next) => {
         message: "Failed to create booking. Payment has been refunded.",
       });
     }
-    
-    console.log("Booking created:", booking._id);
-    
-    // Update ride seats
-    await Ride.findByIdAndUpdate(
-      rideId,
-      { $inc: { seats_left: -seats, luggage_left: -(parseInt(luggage_count) || 0) } },
-      { new: true }
-    );
-    
-    console.log(`Ride ${rideId} seats updated, removed ${seats} seats and ${luggage_count || 0} luggage`);
+
+    console.log("Booking created:", booking._id, "Ride", rideId, "seats updated atomically");
 
     // Credit driver's wallet (if driver doesn't have Stripe Connect)
     // If driver HAS Stripe Connect, the money goes directly via transfer_data
@@ -498,21 +482,10 @@ exports.payWithWallet = async (req, res, next) => {
       });
     }
     
-    // Check if enough seats available
-    if (ride.seats_left < seats) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Only ${ride.seats_left} seats available` 
-      });
-    }
-    
-    // Calculate total amount in cents
     const totalAmount = Math.round(ride.price_per_seat * seats * 100);
-    
-    // Get passenger's wallet
+    const luggage = Math.max(0, parseInt(luggage_count) || 0);
+
     const passengerWallet = await Wallet.getOrCreateWallet(userId);
-    
-    // Check if passenger has enough balance
     if (passengerWallet.balance < totalAmount) {
       return res.status(400).json({
         success: false,
@@ -524,37 +497,39 @@ exports.payWithWallet = async (req, res, next) => {
         code: "INSUFFICIENT_BALANCE"
       });
     }
-    
-    console.log("Wallet payment calculation:", {
-      pricePerSeat: ride.price_per_seat,
-      seats,
-      totalAmount,
-      walletBalance: passengerWallet.balance
-    });
-    
-    // Deduct from passenger wallet
-    passengerWallet.balance -= totalAmount;
-    await passengerWallet.save();
-    
-    // Create the booking with status 'accepted' (already paid)
-    const booking = await Booking.create({
-      ride_id: rideId,
-      passenger_id: userId,
-      seats: seats,
-      luggage_count: parseInt(luggage_count) || 0,
-      status: 'accepted',
-      payment_status: 'paid',
-      payment_method: 'wallet', // Mark as wallet payment
-    });
-    
-    console.log("Booking created with wallet payment:", booking._id);
-    
-    // Update ride seats
-    await Ride.findByIdAndUpdate(
-      rideId,
-      { $inc: { seats_left: -seats, luggage_left: -(parseInt(luggage_count) || 0) } },
+
+    const rideFilter = { _id: rideId, seats_left: { $gte: seats } };
+    if (luggage > 0) rideFilter.luggage_left = { $gte: luggage };
+    const updatedRide = await Ride.findOneAndUpdate(
+      rideFilter,
+      { $inc: { seats_left: -seats, luggage_left: -luggage } },
       { new: true }
     );
+    if (!updatedRide) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${ride.seats_left} seat(s) available`,
+      });
+    }
+
+    let booking;
+    try {
+      booking = await Booking.create({
+        ride_id: rideId,
+        passenger_id: userId,
+        seats: seats,
+        luggage_count: luggage,
+        status: "accepted",
+        payment_status: "paid",
+        payment_method: "wallet",
+      });
+    } catch (bookingError) {
+      await Ride.findByIdAndUpdate(rideId, { $inc: { seats_left: seats, luggage_left: luggage } }, { new: true });
+      throw bookingError;
+    }
+
+    passengerWallet.balance -= totalAmount;
+    await passengerWallet.save();
     
     // Get passenger info for transaction record
     const passenger = await User.findById(userId);
@@ -586,7 +561,7 @@ exports.payWithWallet = async (req, res, next) => {
       processed_at: new Date(),
     });
     
-    // Credit driver's wallet (full amount - no platform fee for wallet payments)
+    // Credit driver's wallet (platform fee is applied; driver gets net amount)
     const driver = ride.driver_id;
     const driverWallet = await Wallet.getOrCreateWallet(driverId);
     

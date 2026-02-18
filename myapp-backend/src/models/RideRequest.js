@@ -92,6 +92,12 @@ const rideRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    // Payment status when request is accepted (paid via acceptOfferWithPayment)
+    payment_status: {
+      type: String,
+      enum: ["pending", "paid", "refunded"],
+      default: "pending",
+    },
     // Driver offers (multiple drivers can offer)
     offers: [
       {
@@ -110,6 +116,11 @@ const rideRequestSchema = new mongoose.Schema(
           enum: ["pending", "accepted", "rejected"],
           default: "pending",
         },
+        payment_method: {
+          type: String,
+          enum: ["card", "wallet"],
+        },
+        paid_at: { type: Date },
         created_at: {
           type: Date,
           default: Date.now,

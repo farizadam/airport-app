@@ -2,6 +2,7 @@ const RideRequest = require("../models/RideRequest");
 const Airport = require("../models/Airport");
 const User = require("../models/User");
 const Ride = require("../models/Ride");
+const Booking = require("../models/Booking");
 const Notification = require("../models/Notification");
 const NotificationService = require("../services/notificationService");
 const { safeGet, safeSetex, safeDel, safeKeys } = require("../config/redisClient");
@@ -545,59 +546,46 @@ exports.makeOffer = async (req, res, next) => {
   }
 };
 
+/**
+ * Reserve seats on a ride atomically and create a booking.
+ * Returns the booking or throws if not enough seats/luggage.
+ */
+async function reserveRideSeatsAndCreateBooking(rideId, passengerId, seats, luggageCount, options = {}) {
+  const luggage = Math.max(0, parseInt(luggageCount) || 0);
+  const updateInc = { seats_left: -seats };
+  if (luggage > 0) updateInc.luggage_left = -luggage;
+  const filter = { _id: rideId, seats_left: { $gte: seats } };
+  if (luggage > 0) filter.luggage_left = { $gte: luggage };
+  const update = { $inc: updateInc };
+
+  const ride = await Ride.findOneAndUpdate(filter, update, { new: true });
+  if (!ride) {
+    const r = await Ride.findById(rideId).select("seats_left luggage_left");
+    const msg = r
+      ? `Only ${r.seats_left} seat(s) and ${r.luggage_left || 0} luggage spot(s) available.`
+      : "Ride not found.";
+    const err = new Error(msg);
+    err.code = "SEATS_UNAVAILABLE";
+    throw err;
+  }
+
+  const bookingData = {
+    ride_id: rideId,
+    passenger_id: passengerId,
+    seats,
+    luggage_count: luggage,
+    status: "accepted",
+    payment_status: options.payment_status || "pending",
+  };
+  if (options.payment_method) bookingData.payment_method = options.payment_method;
+  if (options.payment_intent_id) bookingData.payment_intent_id = options.payment_intent_id;
+
+  const booking = await Booking.create(bookingData);
+  return booking;
+}
+
 // Passenger accepts an offer
 exports.acceptOffer = async (req, res, next) => {
-  console.log("[DEBUG] acceptOffer called", {
-    user: req.user?.id,
-    params: req.params,
-    body: req.body,
-  });
-
-  // Debug request found
-  const requestId = req.params.id;
-  const offer_id = req.body.offer_id;
-  const request = await RideRequest.findOne({
-    _id: requestId,
-    passenger: req.user.id,
-  });
-  console.log(
-    "[DEBUG] request found:",
-    request
-      ? {
-          id: request._id,
-          status: request.status,
-          offers: request.offers.map((o) => ({
-            _id: o._id,
-            driver: o.driver,
-            status: o.status,
-          })),
-        }
-      : null,
-  );
-
-  if (!request) {
-    console.log("[DEBUG] No request found");
-  }
-
-  if (request && request.status !== "pending") {
-    console.log("[DEBUG] Request not pending", { status: request.status });
-  }
-
-  const offer = request ? request.offers.id(offer_id) : null;
-  console.log(
-    "[DEBUG] offer found:",
-    offer
-      ? {
-          _id: offer._id,
-          driver: offer.driver,
-          status: offer.status,
-        }
-      : null,
-  );
-
-  if (!offer) {
-    console.log("[DEBUG] No offer found");
-  }
   try {
     const { offer_id } = req.body;
     const requestId = req.params.id;
@@ -618,6 +606,21 @@ exports.acceptOffer = async (req, res, next) => {
     const offer = request.offers.id(offer_id);
     if (!offer) {
       return res.status(404).json({ message: "Offer not found" });
+    }
+
+    const rideId = offer.ride ? (offer.ride._id || offer.ride) : null;
+    const seats = request.seats_needed || 1;
+    const luggageCount = request.luggage_count || 0;
+
+    if (rideId) {
+      try {
+        await reserveRideSeatsAndCreateBooking(rideId, req.user.id, seats, luggageCount, { payment_status: "pending" });
+      } catch (err) {
+        if (err.code === "SEATS_UNAVAILABLE") {
+          return res.status(400).json({ success: false, message: err.message });
+        }
+        throw err;
+      }
     }
 
     // Accept this offer
@@ -910,6 +913,40 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
       }
     } else {
       return res.status(400).json({ message: "Invalid payment method" });
+    }
+
+    // Reserve seats on the ride and create booking (so same seats cannot be sold twice)
+    const rideId = offer.ride ? (offer.ride._id || offer.ride) : null;
+    const seats = request.seats_needed || 1;
+    const luggageCount = request.luggage_count || 0;
+    let bookingFromRequest = null;
+
+    if (rideId) {
+      try {
+        bookingFromRequest = await reserveRideSeatsAndCreateBooking(rideId, userId, seats, luggageCount, {
+          payment_status: "paid",
+          payment_method,
+          payment_intent_id: payment_method === "card" ? payment_intent_id : undefined,
+        });
+      } catch (err) {
+        if (err.code === "SEATS_UNAVAILABLE") {
+          // Refund: payment was taken but seats no longer available
+          if (payment_method === "wallet") {
+            const passengerWallet = await Wallet.getOrCreateWallet(userId);
+            passengerWallet.balance += totalAmount;
+            await passengerWallet.save();
+            const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
+            if (driverWallet.balance >= driverEarnings) {
+              driverWallet.balance -= driverEarnings;
+              await driverWallet.save();
+            }
+          } else if (payment_method === "card" && payment_intent_id) {
+            await stripe.refunds.create({ payment_intent: payment_intent_id });
+          }
+          return res.status(400).json({ success: false, message: err.message });
+        }
+        throw err;
+      }
     }
 
     // Accept the offer
