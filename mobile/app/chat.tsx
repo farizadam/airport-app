@@ -278,7 +278,10 @@ export default function ChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMyMessage = item.sender_id._id === user?.id;
+    const senderId = typeof item.sender_id === "object" && item.sender_id !== null
+      ? (item.sender_id as { _id?: string })._id
+      : item.sender_id;
+    const isMyMessage = senderId === user?.id;
 
     return (
       <View style={[styles.messageRow, isMyMessage && styles.myMessageRow]}>

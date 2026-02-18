@@ -649,6 +649,7 @@ exports.getRequestChatInfo = async (req, res) => {
     const request = await RideRequest.findById(requestId)
       .populate("passenger", "first_name last_name avatar_url phone")
       .populate("matched_driver", "first_name last_name avatar_url phone")
+      .populate("matched_ride")
       .populate("airport", "name code");
 
     if (!request) {
@@ -689,12 +690,12 @@ exports.getRequestChatInfo = async (req, res) => {
           seats: request.seats_needed,
         },
         ride: {
-          id: request._id,
-          home_city: request.location_city,
-          home_address: request.location_address,
+          id: request.matched_ride?._id ?? null,
+          home_city: request.matched_ride?.home_city ?? request.location_city,
+          home_address: request.matched_ride?.home_address ?? request.location_address,
           airport_name: request.airport?.name || "Airport",
           airport_code: request.airport?.code,
-          departure: request.preferred_datetime,
+          departure: request.matched_ride?.datetime_start ?? request.preferred_datetime,
           direction: request.direction,
         },
         is_driver: isDriver,

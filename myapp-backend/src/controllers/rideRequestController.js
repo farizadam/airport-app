@@ -383,9 +383,13 @@ exports.getMyOffers = async (req, res, next) => {
         status: "accepted",
       };
     } else if (status === "rejected") {
+      // Requests where I made an offer but didn't get it: my offer was rejected or request cancelled/expired
       query = {
         "offers.driver": userId,
-        status: { $in: ["pending", "cancelled", "expired"] },
+        $or: [
+          { status: { $in: ["pending", "cancelled", "expired"] } },
+          { status: "accepted", matched_driver: { $ne: userId } },
+        ],
       };
     }
 
@@ -942,6 +946,15 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
             }
           } else if (payment_method === "card" && payment_intent_id) {
             await stripe.refunds.create({ payment_intent: payment_intent_id });
+            // Deduct from driver wallet if they were already credited (no Stripe Connect)
+            const driver = await User.findById(offer.driver);
+            if (!driver?.stripeAccountId) {
+              const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
+              if (driverWallet.balance >= driverEarnings) {
+                driverWallet.balance -= driverEarnings;
+                await driverWallet.save();
+              }
+            }
           }
           return res.status(400).json({ success: false, message: err.message });
         }
@@ -1108,7 +1121,7 @@ exports.rejectOffer = async (req, res, next) => {
 // Cancel a request (passenger only)
 exports.cancelRequest = async (req, res, next) => {
   try {
-    const request = await RideRequest.findOneAndDelete({
+    const request = await RideRequest.findOne({
       _id: req.params.id,
       passenger: req.user.id,
     });
@@ -1116,6 +1129,14 @@ exports.cancelRequest = async (req, res, next) => {
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
     }
+
+    if (request.status === "accepted") {
+      return res
+        .status(400)
+        .json({ message: "Cannot cancel a request that has already been accepted" });
+    }
+
+    await RideRequest.deleteOne({ _id: request._id });
 
     res.json({
       message: "Request cancelled and removed successfully",
