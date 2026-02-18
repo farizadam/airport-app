@@ -162,7 +162,14 @@ exports.updateRequest = async (req, res, next) => {
         coordinates: [location_longitude, request.location_latitude],
       };
     }
-    if (preferred_datetime) request.preferred_datetime = preferred_datetime;
+    if (preferred_datetime) {
+      const newPreferred = new Date(preferred_datetime);
+      if (Number.isNaN(newPreferred.getTime())) {
+        return res.status(400).json({ message: "Invalid preferred date/time" });
+      }
+      request.preferred_datetime = newPreferred;
+      request.expires_at = new Date(newPreferred.getTime() + 60 * 60 * 1000);
+    }
     if (time_flexibility) request.time_flexibility = time_flexibility;
     if (seats_needed) request.seats_needed = seats_needed;
     if (luggage_count !== undefined) request.luggage_count = luggage_count;
@@ -172,6 +179,11 @@ exports.updateRequest = async (req, res, next) => {
 
     await request.save();
     await request.populate(["airport", "passenger"]);
+
+    const userRequestKeysUpdate = await safeKeys(`user_requests:${req.user.id}:*`);
+    if (userRequestKeysUpdate.length > 0) await safeDel(userRequestKeysUpdate);
+    const availableKeysUpdate = await safeKeys(`available_requests:*`);
+    if (availableKeysUpdate.length > 0) await safeDel(availableKeysUpdate);
 
     res.json({
       message: "Request updated successfully",
@@ -186,7 +198,9 @@ exports.updateRequest = async (req, res, next) => {
 exports.getMyRequests = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const cacheKey = `user_requests:${req.user.id}:${status || "all"}:${page}`;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const cacheKey = `user_requests:${req.user.id}:${status || "all"}:${pageNum}`;
 
     // Try cache first (safe – returns null when Redis is down)
     const cached = await safeGet(cacheKey);
@@ -205,18 +219,18 @@ exports.getMyRequests = async (req, res, next) => {
       .populate("matched_ride")
       .populate("offers.driver", "first_name last_name phone rating avatar_url")
       .sort({ created_at: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
 
     const total = await RideRequest.countDocuments(query);
 
     const response = {
       requests,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limitNum),
       },
     };
 
@@ -243,6 +257,8 @@ exports.getAvailableRequests = async (req, res, next) => {
       page = 1,
       limit = 10,
     } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
     console.log("[getAvailableRequests] Query params:", {
       airport_id,
@@ -302,8 +318,8 @@ exports.getAvailableRequests = async (req, res, next) => {
       sortOption = {}; // $near handles sorting by distance
     }
 
-    // Create cache key based on search params
-    const cacheKey = `available_requests:${airport_id}:${direction}:${date}:${city}:${page}`;
+    // Create cache key based on search params (include geo when present to avoid wrong cache hits)
+    const cacheKey = `available_requests:${airport_id}:${direction}:${date}:${city}:${latitude}:${longitude}:${radius}:${pageNum}`;
 
     // Try cache first (safe – returns null when Redis is down)
     const cached2 = await safeGet(cacheKey);
@@ -317,8 +333,8 @@ exports.getAvailableRequests = async (req, res, next) => {
       .populate("passenger", "first_name last_name rating avatar_url")
       .populate("offers.driver", "_id")
       .sort(sortOption)
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
 
     console.log("[getAvailableRequests] Found", requests.length, "requests");
 
@@ -354,10 +370,10 @@ exports.getAvailableRequests = async (req, res, next) => {
     const response = {
       requests: requestsWithOfferStatus,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limitNum),
       },
     };
 
@@ -375,8 +391,10 @@ exports.getMyOffers = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
     const userId = req.user.id;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
-    const cacheKey = `driver_offers:${userId}:${status || "all"}:${page}`;
+    const cacheKey = `driver_offers:${userId}:${status || "all"}:${pageNum}`;
 
     // Try cache first (safe – returns null when Redis is down)
     const cached3 = await safeGet(cacheKey);
@@ -417,8 +435,8 @@ exports.getMyOffers = async (req, res, next) => {
       .populate("matched_driver", "first_name last_name phone rating avatar_url")
       .populate("offers.driver", "first_name last_name phone rating avatar_url")
       .sort({ created_at: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
 
     const total = await RideRequest.countDocuments(query);
 
@@ -440,10 +458,10 @@ exports.getMyOffers = async (req, res, next) => {
     const response = {
       requests: requestsWithOfferInfo,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limitNum),
       },
     };
 
@@ -456,7 +474,7 @@ exports.getMyOffers = async (req, res, next) => {
   }
 };
 
-// Get single request details
+// Get single request details (only passenger, matched driver, or a driver with an offer can view)
 exports.getRequest = async (req, res, next) => {
   try {
     const request = await RideRequest.findById(req.params.id)
@@ -469,6 +487,14 @@ exports.getRequest = async (req, res, next) => {
 
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
+    }
+
+    const userId = req.user.id;
+    const isPassenger = request.passenger._id?.toString() === userId || request.passenger?.toString() === userId;
+    const isMatchedDriver = request.matched_driver?._id?.toString() === userId || request.matched_driver?.toString() === userId;
+    const hasOffer = request.offers?.some((o) => o.driver?.toString() === userId || o.driver?._id?.toString() === userId);
+    if (!isPassenger && !isMatchedDriver && !hasOffer) {
+      return res.status(403).json({ message: "You do not have access to this request" });
     }
 
     res.json({ request });
@@ -1137,10 +1163,42 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
         const passengerWallet = await Wallet.getOrCreateWallet(userId);
         passengerWallet.balance += totalAmount;
         await passengerWallet.save();
+        await Transaction.create({
+          wallet_id: passengerWallet._id,
+          user_id: userId,
+          type: "refund",
+          amount: totalAmount,
+          gross_amount: totalAmount,
+          fee_amount: 0,
+          fee_percentage: 0,
+          net_amount: totalAmount,
+          currency: "EUR",
+          status: "completed",
+          reference_type: "ride",
+          reference_id: request._id,
+          description: `Refund: request no longer pending - ${request.seats_needed} seat(s)`,
+          processed_at: new Date(),
+        });
         const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
         if (driverWallet.balance >= driverEarnings) {
           driverWallet.balance -= driverEarnings;
           await driverWallet.save();
+          await Transaction.create({
+            wallet_id: driverWallet._id,
+            user_id: offer.driver,
+            type: "adjustment",
+            amount: -driverEarnings,
+            gross_amount: driverEarnings,
+            fee_amount: 0,
+            fee_percentage: 0,
+            net_amount: -driverEarnings,
+            currency: "EUR",
+            status: "completed",
+            reference_type: "ride",
+            reference_id: request._id,
+            description: `Reversal: request no longer pending - ${request.seats_needed} seat(s)`,
+            processed_at: new Date(),
+          });
         }
       } else if (payment_method === "card" && payment_intent_id) {
         await stripe.refunds.create({ payment_intent: payment_intent_id });
@@ -1150,6 +1208,22 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
           if (driverWallet.balance >= driverEarnings) {
             driverWallet.balance -= driverEarnings;
             await driverWallet.save();
+            await Transaction.create({
+              wallet_id: driverWallet._id,
+              user_id: offer.driver,
+              type: "adjustment",
+              amount: -driverEarnings,
+              gross_amount: driverEarnings,
+              fee_amount: 0,
+              fee_percentage: 0,
+              net_amount: -driverEarnings,
+              currency: "EUR",
+              status: "completed",
+              reference_type: "ride",
+              reference_id: request._id,
+              description: `Reversal: request no longer pending (card refund) - ${request.seats_needed} seat(s)`,
+              processed_at: new Date(),
+            });
           }
         }
       }
@@ -1250,6 +1324,10 @@ exports.rejectOffer = async (req, res, next) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
+    if (request.status !== "pending") {
+      return res.status(400).json({ message: "Cannot reject an offer when the request is no longer pending" });
+    }
+
     const offer = request.offers.id(offer_id);
     if (!offer) {
       return res.status(404).json({ message: "Offer not found" });
@@ -1275,15 +1353,12 @@ exports.rejectOffer = async (req, res, next) => {
       });
     }
 
-    // Invalidate relevant caches
     const userRequestKeys3 = await safeKeys(`user_requests:${req.user.id}:*`);
-    if (userRequestKeys3.length > 0) {
-      await safeDel(userRequestKeys3);
-    }
+    if (userRequestKeys3.length > 0) await safeDel(userRequestKeys3);
     const driverOfferKeys3 = await safeKeys(`driver_offers:${offer.driver}:*`);
-    if (driverOfferKeys3.length > 0) {
-      await safeDel(driverOfferKeys3);
-    }
+    if (driverOfferKeys3.length > 0) await safeDel(driverOfferKeys3);
+    const availableKeysReject = await safeKeys(`available_requests:*`);
+    if (availableKeysReject.length > 0) await safeDel(availableKeysReject);
 
     res.json({
       message: "Offer rejected",
@@ -1314,6 +1389,11 @@ exports.cancelRequest = async (req, res, next) => {
 
     await RideRequest.deleteOne({ _id: request._id });
 
+    const userRequestKeysCancel = await safeKeys(`user_requests:${req.user.id}:*`);
+    if (userRequestKeysCancel.length > 0) await safeDel(userRequestKeysCancel);
+    const availableKeysCancel = await safeKeys(`available_requests:*`);
+    if (availableKeysCancel.length > 0) await safeDel(availableKeysCancel);
+
     res.json({
       message: "Request cancelled and removed successfully",
       request,
@@ -1333,6 +1413,10 @@ exports.withdrawOffer = async (req, res, next) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
+    if (request.status !== "pending") {
+      return res.status(400).json({ message: "Cannot withdraw an offer when the request is no longer pending" });
+    }
+
     const offerIndex = request.offers.findIndex(
       (o) => o.driver.toString() === req.user.id && o.status === "pending",
     );
@@ -1343,6 +1427,11 @@ exports.withdrawOffer = async (req, res, next) => {
 
     request.offers.splice(offerIndex, 1);
     await request.save();
+
+    const driverOfferKeysW = await safeKeys(`driver_offers:${req.user.id}:*`);
+    if (driverOfferKeysW.length > 0) await safeDel(driverOfferKeysW);
+    const availableKeysW = await safeKeys(`available_requests:*`);
+    if (availableKeysW.length > 0) await safeDel(availableKeysW);
 
     res.json({
       message: "Offer withdrawn successfully",
