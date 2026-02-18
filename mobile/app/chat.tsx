@@ -278,9 +278,8 @@ export default function ChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const senderId = typeof item.sender_id === "object" && item.sender_id !== null
-      ? (item.sender_id as { _id?: string })._id
-      : item.sender_id;
+    const sender = item.sender_id as { _id?: string; first_name?: string; last_name?: string; avatar_url?: string } | string;
+    const senderId = typeof sender === "object" && sender !== null ? sender._id : sender;
     const isMyMessage = senderId === user?.id;
 
     return (
@@ -288,10 +287,10 @@ export default function ChatScreen() {
         {!isMyMessage && (
           <View style={styles.avatarContainer}>
             <ProfileAvatar
-              userId={item.sender_id._id}
-              firstName={item.sender_id.first_name}
-              lastName={item.sender_id.last_name}
-              avatarUrl={item.sender_id.avatar_url}
+              userId={typeof sender === "object" && sender !== null ? sender._id : sender}
+              firstName={typeof sender === "object" && sender !== null ? sender.first_name : undefined}
+              lastName={typeof sender === "object" && sender !== null ? sender.last_name : undefined}
+              avatarUrl={typeof sender === "object" && sender !== null ? sender.avatar_url : undefined}
               size="small"
             />
           </View>

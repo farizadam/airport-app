@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const RideRequest = require("../models/RideRequest");
 const Airport = require("../models/Airport");
 const User = require("../models/User");
@@ -6,6 +7,20 @@ const Booking = require("../models/Booking");
 const Notification = require("../models/Notification");
 const NotificationService = require("../services/notificationService");
 const { safeGet, safeSetex, safeDel, safeKeys } = require("../config/redisClient");
+
+/**
+ * Release a booking and return seats/luggage to the ride (rollback after failed accept).
+ */
+async function releaseBookingAndSeats(booking) {
+  if (!booking) return;
+  await Ride.findByIdAndUpdate(booking.ride_id, {
+    $inc: {
+      seats_left: booking.seats,
+      luggage_left: booking.luggage_count || 0,
+    },
+  });
+  await Booking.deleteOne({ _id: booking._id });
+}
 
 // Create a new ride request (passenger)
 exports.createRequest = async (req, res, next) => {
@@ -34,6 +49,9 @@ exports.createRequest = async (req, res, next) => {
 
     // Set expiry to 1 hour AFTER preferred_datetime (gives drivers time to respond)
     const preferredDate = new Date(preferred_datetime);
+    if (Number.isNaN(preferredDate.getTime())) {
+      return res.status(400).json({ message: "Invalid preferred date/time" });
+    }
     const expiresAt = new Date(preferredDate.getTime() + 60 * 60 * 1000); // +1 hour
 
     const request = await RideRequest.create({
@@ -489,7 +507,7 @@ exports.makeOffer = async (req, res, next) => {
     // Verify ride belongs to driver if ride_id provided
     let ride = null;
     if (ride_id) {
-      ride = await Ride.findOne({ _id: ride_id, driver: req.user.id });
+      ride = await Ride.findOne({ _id: ride_id, driver_id: req.user.id });
       if (!ride) {
         return res.status(404).json({ message: "Ride not found or not yours" });
       }
@@ -588,15 +606,16 @@ async function reserveRideSeatsAndCreateBooking(rideId, passengerId, seats, lugg
   return booking;
 }
 
-// Passenger accepts an offer
+// Passenger accepts an offer (atomic update to prevent race when double-submit or concurrent accept)
 exports.acceptOffer = async (req, res, next) => {
   try {
     const { offer_id } = req.body;
     const requestId = req.params.id;
+    const userId = req.user.id;
 
     const request = await RideRequest.findOne({
       _id: requestId,
-      passenger: req.user.id,
+      passenger: userId,
     });
 
     if (!request) {
@@ -612,13 +631,18 @@ exports.acceptOffer = async (req, res, next) => {
       return res.status(404).json({ message: "Offer not found" });
     }
 
+    if (offer.status !== "pending") {
+      return res.status(400).json({ message: "Offer is no longer pending" });
+    }
+
     const rideId = offer.ride ? (offer.ride._id || offer.ride) : null;
     const seats = request.seats_needed || 1;
     const luggageCount = request.luggage_count || 0;
+    let booking = null;
 
     if (rideId) {
       try {
-        await reserveRideSeatsAndCreateBooking(rideId, req.user.id, seats, luggageCount, { payment_status: "pending" });
+        booking = await reserveRideSeatsAndCreateBooking(rideId, userId, seats, luggageCount, { payment_status: "pending" });
       } catch (err) {
         if (err.code === "SEATS_UNAVAILABLE") {
           return res.status(400).json({ success: false, message: err.message });
@@ -627,68 +651,92 @@ exports.acceptOffer = async (req, res, next) => {
       }
     }
 
-    // Accept this offer
-    offer.status = "accepted";
+    const offerIdObj = new mongoose.Types.ObjectId(offer_id);
+    const matchedDriverId = offer.driver._id || offer.driver;
+    const matchedRideId = offer.ride ? (offer.ride._id || offer.ride) : null;
+    const atomicUpdate = [
+      {
+        $set: {
+          status: "accepted",
+          matched_driver: matchedDriverId,
+          matched_ride: matchedRideId,
+          offers: {
+            $map: {
+              input: "$offers",
+              as: "o",
+              in: {
+                $mergeObjects: [
+                  "$$o",
+                  {
+                    status: {
+                      $cond: [
+                        { $eq: ["$$o._id", offerIdObj] },
+                        "accepted",
+                        "rejected",
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ];
 
-    // Reject all other offers
-    request.offers.forEach((o) => {
-      if (o._id.toString() !== offer_id) {
-        o.status = "rejected";
-      }
-    });
+    const updatedRequest = await RideRequest.findOneAndUpdate(
+      { _id: requestId, passenger: userId, status: "pending" },
+      atomicUpdate,
+      { new: true },
+    );
 
-    request.status = "accepted";
-    request.matched_driver = offer.driver;
-    request.matched_ride = offer.ride;
+    if (!updatedRequest) {
+      if (booking) await releaseBookingAndSeats(booking);
+      return res.status(409).json({
+        success: false,
+        message: "Request was just accepted or is no longer pending. Please refresh.",
+      });
+    }
 
-    await request.save();
-    await request.populate([
+    await updatedRequest.populate([
       "airport",
       "matched_driver",
       "matched_ride",
       "offers.driver",
     ]);
 
-    // Get driver name for notification (safely extract ID)
-    const driverId = offer.driver._id || offer.driver;
+    const acceptedOffer = updatedRequest.offers.id(offer_id);
+    const driverId = acceptedOffer?.driver?._id || acceptedOffer?.driver || matchedDriverId;
     const driver = await User.findById(driverId).select('first_name last_name');
     const driverName = driver ? `${driver.first_name} ${driver.last_name}` : 'Driver';
 
-    // Get passenger name (safely extract ID)
-    const passengerId = request.passenger._id || request.passenger;
+    const passengerId = updatedRequest.passenger._id || updatedRequest.passenger;
     const passenger = await User.findById(passengerId).select('first_name last_name');
     const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
 
-    // Notify passenger (request owner) that their request was accepted
     await NotificationService.notifyRequestAccepted(passengerId, {
-      request_id: request._id,
+      request_id: updatedRequest._id,
       driver_id: driverId,
       driver_name: driverName,
-      ride_id: offer.ride,
+      ride_id: acceptedOffer?.ride || matchedRideId,
       message: "Your ride request has been accepted by a driver.",
     });
 
-    // Notify the accepted driver
-    if (offer && offer.driver) {
+    if (acceptedOffer?.driver) {
       await NotificationService.notifyOfferAccepted(driverId, {
-        request_id: request._id,
+        request_id: updatedRequest._id,
         passenger_id: passengerId,
         passenger_name: passengerName,
-        ride_id: offer.ride,
+        ride_id: acceptedOffer.ride || matchedRideId,
         message: "Your offer has been accepted by the passenger.",
       });
-    } else {
-      console.log(
-        "[DEBUG] Skipped driver notification: offer or offer.driver missing",
-      );
     }
 
-    // Notify rejected drivers
-    for (const o of request.offers) {
+    for (const o of updatedRequest.offers) {
       if (o._id.toString() !== offer_id && o.driver) {
         const rejectedDriverId = o.driver._id || o.driver;
         await NotificationService.notifyOfferRejected(rejectedDriverId, {
-          request_id: request._id,
+          request_id: updatedRequest._id,
           passenger_id: passengerId,
           passenger_name: passengerName,
           ride_id: o.ride,
@@ -697,9 +745,16 @@ exports.acceptOffer = async (req, res, next) => {
       }
     }
 
+    const userRequestKeysAccept = await safeKeys(`user_requests:${userId}:*`);
+    if (userRequestKeysAccept.length > 0) await safeDel(userRequestKeysAccept);
+    const driverOfferKeysAccept = await safeKeys(`driver_offers:${driverId}:*`);
+    if (driverOfferKeysAccept.length > 0) await safeDel(driverOfferKeysAccept);
+    const availableKeysAccept = await safeKeys(`available_requests:*`);
+    if (availableKeysAccept.length > 0) await safeDel(availableKeysAccept);
+
     res.json({
       message: "Offer accepted successfully",
-      request,
+      request: updatedRequest,
     });
   } catch (error) {
     next(error);
@@ -939,20 +994,79 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
             const passengerWallet = await Wallet.getOrCreateWallet(userId);
             passengerWallet.balance += totalAmount;
             await passengerWallet.save();
+            await Transaction.create({
+              wallet_id: passengerWallet._id,
+              user_id: userId,
+              type: "refund",
+              amount: totalAmount,
+              gross_amount: totalAmount,
+              fee_amount: 0,
+              fee_percentage: 0,
+              net_amount: totalAmount,
+              currency: "EUR",
+              status: "completed",
+              reference_type: "ride",
+              reference_id: request._id,
+              description: `Refund: seats unavailable after payment - ${request.seats_needed} seat(s)`,
+              ride_details: {
+                ride_id: offer.ride || request._id,
+                booking_id: request._id,
+                driver_id: offer.driver,
+                route: `${request.location_city || "Origin"} → ${request.airport?.name || "Airport"}`,
+              },
+              processed_at: new Date(),
+            });
             const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
             if (driverWallet.balance >= driverEarnings) {
               driverWallet.balance -= driverEarnings;
               await driverWallet.save();
+              await Transaction.create({
+                wallet_id: driverWallet._id,
+                user_id: offer.driver,
+                type: "adjustment",
+                amount: -driverEarnings,
+                gross_amount: driverEarnings,
+                fee_amount: 0,
+                fee_percentage: 0,
+                net_amount: -driverEarnings,
+                currency: "EUR",
+                status: "completed",
+                reference_type: "ride",
+                reference_id: request._id,
+                description: `Reversal: seats unavailable after payment - ${request.seats_needed} seat(s)`,
+                ride_details: {
+                  ride_id: offer.ride || request._id,
+                  booking_id: request._id,
+                  passenger_id: userId,
+                  route: `${request.location_city || "Origin"} → ${request.airport?.name || "Airport"}`,
+                },
+                processed_at: new Date(),
+              });
             }
           } else if (payment_method === "card" && payment_intent_id) {
             await stripe.refunds.create({ payment_intent: payment_intent_id });
-            // Deduct from driver wallet if they were already credited (no Stripe Connect)
             const driver = await User.findById(offer.driver);
             if (!driver?.stripeAccountId) {
               const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
               if (driverWallet.balance >= driverEarnings) {
                 driverWallet.balance -= driverEarnings;
                 await driverWallet.save();
+                await Transaction.create({
+                  wallet_id: driverWallet._id,
+                  user_id: offer.driver,
+                  type: "adjustment",
+                  amount: -driverEarnings,
+                  gross_amount: driverEarnings,
+                  fee_amount: 0,
+                  fee_percentage: 0,
+                  net_amount: -driverEarnings,
+                  currency: "EUR",
+                  status: "completed",
+                  reference_type: "ride",
+                  reference_id: request._id,
+                  description: `Reversal: seats unavailable after card refund - ${request.seats_needed} seat(s)`,
+                  processed_at: new Date(),
+                });
               }
             }
           }
@@ -962,65 +1076,128 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
       }
     }
 
-    // Accept the offer
-    offer.status = "accepted";
-    offer.payment_method = payment_method;
-    offer.paid_at = new Date();
+    const offerIdObjPay = new mongoose.Types.ObjectId(offer_id);
+    const matchedDriverIdPay = offer.driver._id || offer.driver;
+    const matchedRideIdPay = offer.ride ? (offer.ride._id || offer.ride) : null;
+    const paidAt = new Date();
+    const atomicUpdateWithPayment = [
+      {
+        $set: {
+          status: "accepted",
+          matched_driver: matchedDriverIdPay,
+          matched_ride: matchedRideIdPay,
+          payment_status: "paid",
+          offers: {
+            $map: {
+              input: "$offers",
+              as: "o",
+              in: {
+                $mergeObjects: [
+                  "$$o",
+                  {
+                    status: {
+                      $cond: [
+                        { $eq: ["$$o._id", offerIdObjPay] },
+                        "accepted",
+                        "rejected",
+                      ],
+                    },
+                    payment_method: {
+                      $cond: [
+                        { $eq: ["$$o._id", offerIdObjPay] },
+                        payment_method,
+                        "$$o.payment_method",
+                      ],
+                    },
+                    paid_at: {
+                      $cond: [
+                        { $eq: ["$$o._id", offerIdObjPay] },
+                        paidAt,
+                        "$$o.paid_at",
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ];
 
-    // Reject all other offers
-    request.offers.forEach((o) => {
-      if (o._id.toString() !== offer_id) {
-        o.status = "rejected";
+    const updatedRequestPay = await RideRequest.findOneAndUpdate(
+      { _id: requestId, passenger: userId, status: "pending" },
+      atomicUpdateWithPayment,
+      { new: true },
+    );
+
+    if (!updatedRequestPay) {
+      if (bookingFromRequest) await releaseBookingAndSeats(bookingFromRequest);
+      if (payment_method === "wallet") {
+        const passengerWallet = await Wallet.getOrCreateWallet(userId);
+        passengerWallet.balance += totalAmount;
+        await passengerWallet.save();
+        const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
+        if (driverWallet.balance >= driverEarnings) {
+          driverWallet.balance -= driverEarnings;
+          await driverWallet.save();
+        }
+      } else if (payment_method === "card" && payment_intent_id) {
+        await stripe.refunds.create({ payment_intent: payment_intent_id });
+        const driver = await User.findById(offer.driver);
+        if (!driver?.stripeAccountId) {
+          const driverWallet = await Wallet.getOrCreateWallet(offer.driver);
+          if (driverWallet.balance >= driverEarnings) {
+            driverWallet.balance -= driverEarnings;
+            await driverWallet.save();
+          }
+        }
       }
-    });
+      return res.status(409).json({
+        success: false,
+        message: "Request was just accepted or is no longer pending. Payment has been refunded.",
+      });
+    }
 
-    request.status = "accepted";
-    request.matched_driver = offer.driver;
-    request.matched_ride = offer.ride;
-    request.payment_status = "paid";
-
-    await request.save();
-    await request.populate([
+    await updatedRequestPay.populate([
       "airport",
       "matched_driver",
       "matched_ride",
       "offers.driver",
     ]);
 
-    // Get driver and passenger names for notifications (safely extract IDs)
-    const driverId = offer.driver._id || offer.driver;
+    const acceptedOfferPay = updatedRequestPay.offers.id(offer_id);
+    const driverId = acceptedOfferPay?.driver?._id || acceptedOfferPay?.driver || matchedDriverIdPay;
     const driver = await User.findById(driverId).select('first_name last_name');
     const driverName = driver ? `${driver.first_name} ${driver.last_name}` : 'Driver';
-    
-    const passengerId = request.passenger._id || request.passenger;
+
+    const passengerId = updatedRequestPay.passenger._id || updatedRequestPay.passenger;
     const passenger = await User.findById(passengerId).select('first_name last_name');
     const passengerName = passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Passenger';
 
-    // Notifications
     await NotificationService.notifyRequestAccepted(passengerId, {
-      request_id: request._id,
+      request_id: updatedRequestPay._id,
       driver_id: driverId,
       driver_name: driverName,
-      ride_id: offer.ride,
+      ride_id: acceptedOfferPay?.ride || matchedRideIdPay,
       message: "Your ride request has been accepted and paid.",
     });
 
-    if (offer && offer.driver) {
+    if (acceptedOfferPay?.driver) {
       await NotificationService.notifyOfferAccepted(driverId, {
-        request_id: request._id,
+        request_id: updatedRequestPay._id,
         passenger_id: passengerId,
         passenger_name: passengerName,
-        ride_id: offer.ride,
+        ride_id: acceptedOfferPay.ride || matchedRideIdPay,
         message: "Your offer has been accepted and paid by the passenger.",
       });
     }
 
-    // Notify rejected drivers
-    for (const o of request.offers) {
+    for (const o of updatedRequestPay.offers) {
       if (o._id.toString() !== offer_id && o.driver) {
         const rejectedDriverId = o.driver._id || o.driver;
         await NotificationService.notifyOfferRejected(rejectedDriverId, {
-          request_id: request._id,
+          request_id: updatedRequestPay._id,
           passenger_id: passengerId,
           passenger_name: passengerName,
           ride_id: o.ride,
@@ -1029,12 +1206,11 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
       }
     }
 
-    // Invalidate relevant caches
     const userRequestKeys2 = await safeKeys(`user_requests:${userId}:*`);
     if (userRequestKeys2.length > 0) {
       await safeDel(userRequestKeys2);
     }
-    const driverOfferKeys2 = await safeKeys(`driver_offers:${offer.driver}:*`);
+    const driverOfferKeys2 = await safeKeys(`driver_offers:${matchedDriverIdPay}:*`);
     if (driverOfferKeys2.length > 0) {
       await safeDel(driverOfferKeys2);
     }
@@ -1046,7 +1222,7 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
     res.json({
       success: true,
       message: "Offer accepted and payment processed successfully",
-      request,
+      request: updatedRequestPay,
       payment: {
         method: payment_method,
         amount: totalAmount,
