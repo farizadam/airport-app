@@ -1,7 +1,16 @@
 {
-    "chat.agent.maxRequests": 100,
-    "geminicodeassist.agentDebugMode": true,
-    "geminicodeassist.agentYoloMode": true,
-    "geminicodeassist.verboseLogging": false,
-    "geminicodeassist.updateChannel": "Insiders"
+  "chat.agent.maxRequests": 100,
+  "geminicodeassist.agentDebugMode": true,
+  "geminicodeassist.agentYoloMode": true,
+  "geminicodeassist.verboseLogging": false,
+  "geminicodeassist.updateChannel": "Insiders",
+  "mcpServers": {
+    "TestSprite": {
+      "command": "npx",
+      "args": ["@testsprite/testsprite-mcp@latest"],
+      "env": {
+        "API_KEY": "sk-user-Xyegwp6xr9Qgh5SyZLPh7fduufzEu9-leCqqJ05VwEfh_Y6-a_o26RI7UmZ7mYkHqUXk1cFQCmCroLqdCXljPJfG3RuHuTHrVhd82KpVCTFd4KYsxwcHnjMgOSUkdJtE64I"
+      }
+    }
+  }
 }

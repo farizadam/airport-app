@@ -102,14 +102,70 @@ exports.handleWebhook = async (req, res) => {
 async function handlePaymentIntentSucceeded(paymentIntent) {
   console.log("Payment succeeded:", paymentIntent.id);
 
-  const { rideId, passengerId, driverId, seats, bookingId } = paymentIntent.metadata;
+  const { rideId, passengerId, driverId, seats, bookingId, luggage_count } = paymentIntent.metadata;
 
   if (!rideId || !driverId) {
-    console.log("Missing metadata, skipping wallet update");
+    console.log("Missing metadata (rideId/driverId), skipping wallet update");
     return;
   }
 
   try {
+    // 1. Check if booking exists
+    let booking = await Booking.findOne({
+      $or: [
+        { payment_intent_id: paymentIntent.id },
+        { _id: bookingId ? bookingId : undefined } // Handle undefined bookingId
+      ].filter(Boolean)
+    });
+
+    // 2. ORPHANED PAYMENT HANDLING: Create booking if missing
+    if (!booking) {
+      console.log(`⚠️ Orphaned Payment Detected: ${paymentIntent.id}. Creating booking...`);
+      
+      const seatsNum = parseInt(seats) || 1;
+      const luggageNum = parseInt(luggage_count) || 0;
+
+      // Check ride availability and decrement atomically
+      const rideUpdate = await Ride.findOneAndUpdate(
+        { 
+          _id: rideId, 
+          seats_left: { $gte: seatsNum },
+          luggage_left: { $gte: luggageNum } 
+        },
+        { 
+          $inc: { seats_left: -seatsNum, luggage_left: -luggageNum } 
+        },
+        { new: true }
+      );
+
+      if (!rideUpdate) {
+        console.error(`❌ Ride ${rideId} full or not found. Refunding orphaned payment ${paymentIntent.id}`);
+        await stripe.refunds.create({ payment_intent: paymentIntent.id });
+        return;
+      }
+
+      booking = await Booking.create({
+        ride_id: rideId,
+        passenger_id: passengerId,
+        seats: seatsNum,
+        luggage_count: luggageNum,
+        status: "accepted",
+        payment_status: "paid",
+        payment_method: "card",
+        payment_intent_id: paymentIntent.id,
+      });
+      console.log(`✅ Recovered orphaned booking: ${booking._id}`);
+    } else {
+        // Ensure paid status
+        if (booking.payment_status !== "paid") {
+            booking.payment_status = "paid";
+            booking.payment_intent_id = paymentIntent.id;
+            await booking.save();
+            console.log(`Updated booking ${booking._id} to paid`);
+        }
+    }
+
+    // 3. CREDIT DRIVER WALLET (if applicable)
     // Get the ride and driver
     const ride = await Ride.findById(rideId);
     const driver = await User.findById(driverId);
@@ -120,16 +176,7 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
       return;
     }
 
-    // Get or create driver's wallet
-    const wallet = await Wallet.getOrCreateWallet(driverId);
-
-    // Calculate amounts
-    const grossAmount = paymentIntent.amount; // Already in cents
-    const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
-    const feeAmount = Math.round(grossAmount * (feePercentage / 100));
-    const netAmount = grossAmount - feeAmount;
-
-    // Check if transaction already exists (idempotency)
+    // Check transaction idempotency
     const existingTransaction = await Transaction.findOne({
       stripe_payment_intent_id: paymentIntent.id,
     });
@@ -139,37 +186,33 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
       return;
     }
 
-    // Find the booking
-    let booking = null;
-    if (bookingId) {
-      booking = await Booking.findById(bookingId);
+    // Only credit wallet if driver DOES NOT have Stripe Connect
+    // (If they have Stripe Connect, the split happened automatically at payment time via transfer_data)
+    if (!driver.stripeAccountId) {
+        const wallet = await Wallet.getOrCreateWallet(driverId);
+        const grossAmount = paymentIntent.amount; 
+        const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENT || "10");
+        const feeAmount = Math.round(grossAmount * (feePercentage / 100));
+        const netAmount = grossAmount - feeAmount;
+
+        await wallet.addEarnings(netAmount, false);
+
+        await Transaction.createRideEarning({
+        wallet_id: wallet._id,
+        user_id: driverId,
+        gross_amount: grossAmount,
+        fee_percentage: feePercentage,
+        booking: booking,
+        ride,
+        passenger,
+        stripe_payment_intent_id: paymentIntent.id,
+        });
+
+        console.log(`Credited ${netAmount} cents to driver ${driverId}'s wallet`);
     } else {
-      // Find by ride and passenger
-      booking = await Booking.findOne({
-        ride_id: rideId,
-        passenger_id: passengerId,
-        status: "accepted",
-      });
+        console.log(`Driver ${driverId} has Stripe Connect, skipping wallet credit (direct transfer)`);
     }
 
-    // Add to driver's pending balance (will be released when ride completes)
-    // For now, we'll add directly to available balance
-    // You can change this to pending_balance if you want to hold funds
-    await wallet.addEarnings(netAmount, false);
-
-    // Create transaction record
-    await Transaction.createRideEarning({
-      wallet_id: wallet._id,
-      user_id: driverId,
-      gross_amount: grossAmount,
-      fee_percentage: feePercentage,
-      booking: booking || { _id: bookingId, seats: parseInt(seats) || 1 },
-      ride,
-      passenger,
-      stripe_payment_intent_id: paymentIntent.id,
-    });
-
-    console.log(`Credited ${netAmount} cents to driver ${driverId}'s wallet`);
   } catch (error) {
     console.error("Error processing payment success:", error);
     throw error;
@@ -356,3 +399,8 @@ async function handleChargeRefunded(charge) {
     console.log(`Deducted ${driverRefund} cents from driver wallet for refund`);
   }
 }
+
+// Export internal functions for testing
+exports.handlePaymentIntentSucceeded = handlePaymentIntentSucceeded;
+exports.handlePayoutPaid = handlePayoutPaid;
+exports.handleChargeRefunded = handleChargeRefunded;
