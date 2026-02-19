@@ -12,7 +12,6 @@ const walletSchema = new mongoose.Schema(
     balance: {
       type: Number,
       default: 0,
-      min: 0,
       description: "Available balance in cents (100 = 1.00 EUR)",
     },
     pending_balance: {
@@ -24,7 +23,6 @@ const walletSchema = new mongoose.Schema(
     total_earned: {
       type: Number,
       default: 0,
-      min: 0,
       description: "Total lifetime earnings in cents",
     },
     total_withdrawn: {

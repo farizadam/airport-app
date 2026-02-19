@@ -26,6 +26,7 @@ class NotificationService {
     REQUEST_ACCEPTED: "request_accepted",
     OFFER_ACCEPTED: "offer_accepted",
     OFFER_REJECTED: "offer_rejected",
+    WALLET_UPDATE: "wallet_update",
   };
 
   /**
@@ -236,6 +237,25 @@ class NotificationService {
         passenger_name: offerData.passenger_name,
         ride_id: offerData.ride_id,
         message: offerData.message || "Your offer was not accepted.",
+      },
+    });
+  }
+
+  /**
+   * Send wallet update notification
+   * @param {string} userId - User ID to notify
+   * @param {Object} updateData - { amount, currency, type: 'credit'|'debit', message, transaction_id }
+   */
+  static async notifyWalletUpdate(userId, updateData) {
+    return await this.createAndInvalidateCache(userId, {
+      user_id: userId,
+      type: this.TYPES.WALLET_UPDATE,
+      payload: {
+        amount: updateData.amount,
+        currency: updateData.currency || "EUR",
+        transaction_type: updateData.type, // 'credit' or 'debit'
+        message: updateData.message,
+        transaction_id: updateData.transaction_id,
       },
     });
   }

@@ -120,6 +120,7 @@ const rideRequestSchema = new mongoose.Schema(
           type: String,
           enum: ["card", "wallet"],
         },
+        payment_intent_id: { type: String },
         paid_at: { type: Date },
         created_at: {
           type: Date,

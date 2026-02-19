@@ -380,8 +380,21 @@ export default function RideDetailsScreen() {
   const isOwner = String(user?.id || "") === driverId;
 
   const myBooking = myBookings?.find((b: any) => 
-    (b.ride_id?._id === ride._id || b.ride_id === ride._id)
+    (b.ride_id?._id === ride._id || b.ride_id === ride._id) ||String(b.ride_id?._id) === String(ride?.id) // Loose check
   );
+  
+  console.log("DEBUG RIDE DETAILS:");
+  console.log("- User ID:", user?.id);
+  console.log("- Driver ID:", driverId);
+  console.log("- isOwner:", isOwner);
+  console.log("- Ride ID:", ride?._id || ride?.id);
+  console.log("- My Bookings Count:", myBookings?.length || 0);
+  console.log("- My Booking Found:", myBooking ? "YES" : "NO");
+  if (myBooking) {
+    console.log("- My Booking Status:", myBooking.status);
+    console.log("- My Booking ID:", myBooking._id || myBooking.id);
+  }
+
   const isAcceptedPassenger = myBooking?.status === 'accepted';
   const shouldShowMapAndDriver = isOwner || isAcceptedPassenger;
 
@@ -394,6 +407,53 @@ export default function RideDetailsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']} key={id}>
       <Stack.Screen options={{ headerShown: false }} />
+      {/* Passenger Booking Cancellation Footer */}
+      {!isOwner && myBooking && ['pending', 'accepted'].includes(myBooking.status) && (
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.cancelButton]}
+            onPress={() => {
+              Alert.alert(
+                "Cancel Booking",
+                "Are you sure you want to cancel your booking? If you cancel less than 24 hours before the ride, you may not receive a full refund.",
+                [
+                  { text: "No", style: "cancel" },
+                  { 
+                    text: "Yes, Cancel", 
+                    style: "destructive",
+                    onPress: async () => {
+                      setIsCancelling(true);
+                      try {
+                        const { cancelBooking, getMyBookings } = useBookingStore.getState();
+                        await cancelBooking(myBooking._id || myBooking.id);
+                        await getMyBookings();
+                        Alert.alert("Success", "Booking cancelled successfully", [
+                           { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=active") }
+                        ]);
+                      } catch (error: any) {
+                        Alert.alert("Error", error.message || "Failed to cancel booking");
+                      } finally {
+                        setIsCancelling(false);
+                      }
+                    }
+                  }
+                ]
+              );
+            }}
+            disabled={isCancelling}
+          >
+            {isCancelling ? (
+              <ActivityIndicator color="#DC2626" />
+            ) : (
+              <>
+                <Ionicons name="close-circle" size={20} color="#DC2626" />
+                <Text style={styles.cancelButtonText}>Cancel Booking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* ... header ... */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -1393,12 +1453,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EFF6FF",
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
+    borderColor: "#e0e0e0",
     gap: 8,
+  },
+  cancelButton: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#DC2626", 
   },
   modifyButton: {
     backgroundColor: "#EFF6FF",
@@ -1413,15 +1481,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#007AFF", 
-  },
-  cancelButton: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FECACA",
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#DC2626", 
   },
   contactButtonsRow: {
     flexDirection: 'row',

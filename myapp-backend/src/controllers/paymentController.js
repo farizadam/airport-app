@@ -322,8 +322,41 @@ exports.completePayment = async (req, res, next) => {
         console.log(`Credited ${netAmount} cents to driver ${ride.driver_id}'s wallet`);
       } catch (walletError) {
         console.error("Error crediting driver wallet:", walletError);
-        // Don't fail the booking, just log the error
       }
+    }
+    
+    // ALWAYS create a transaction record for the passenger (for history, even if card payment)
+    try {
+      const passenger = await User.findById(userId);
+      await Transaction.create({
+        wallet_id: (await Wallet.getOrCreateWallet(userId))._id,
+        user_id: userId,
+        type: 'ride_payment',
+        amount: -paymentIntent.amount,
+        gross_amount: paymentIntent.amount,
+        fee_amount: 0,
+        fee_percentage: 0,
+        net_amount: paymentIntent.amount,
+        currency: 'EUR',
+        status: 'completed',
+        reference_type: 'booking',
+        reference_id: booking._id,
+        description: `Payment for ride booking - ${seats} seat(s) (Card)`,
+        ride_details: {
+          ride_id: ride._id,
+          booking_id: booking._id,
+          driver_id: ride.driver_id,
+          driver_name: driver?.name || 'Driver',
+          seats: seats,
+          price_per_seat: ride.price_per_seat,
+          route: `${ride.home_city || 'Origin'} → ${ride.airport_name || 'Airport'}`,
+        },
+        stripe_payment_intent_id: paymentIntentId,
+        processed_at: new Date(),
+      });
+      console.log(`Created card payment transaction for passenger ${userId}`);
+    } catch (txError) {
+      console.error("Error creating passenger transaction record:", txError);
     }
     
     res.status(201).json({

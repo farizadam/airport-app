@@ -184,4 +184,5 @@ export interface RideRequest {
   // Added by getMyOffers
   my_offer?: Offer;
   is_matched?: boolean;
+  has_offer_from_user?: boolean;
 }

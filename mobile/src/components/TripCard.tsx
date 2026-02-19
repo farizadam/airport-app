@@ -399,7 +399,7 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
         </View>
 
         {/* Cancel Button (Only for drivers — passengers cannot cancel from card) */}
-        {showCancelButton && onCancel && item.role !== "passenger" && (
+        {showCancelButton && onCancel && item.role !== "passenger" && !(item.type === "offer" && item.status === "accepted") && (
           <TouchableOpacity 
             style={styles.cardCancelButton}
             onPress={() => onCancel(item)}

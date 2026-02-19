@@ -45,10 +45,24 @@ class NotificationStore {
     this.error = null;
     try {
       const res = await api.get("/notifications");
+      const hasWalletUpdate = res.data.notifications.some(
+        (n: any) => n.type === "wallet_update" && !n.is_read
+      );
+
       runInAction(() => {
         this.notifications = res.data.notifications;
         this.loading = false;
       });
+
+      if (hasWalletUpdate) {
+        console.log("💰 Wallet update notification detected - refreshing wallet store");
+        try {
+          const { useWalletStore } = require("./walletStore");
+          useWalletStore.getState().getWallet();
+        } catch (walletErr) {
+          console.warn("Failed to refresh wallet store from notification:", walletErr);
+        }
+      }
     } catch (e: any) {
       runInAction(() => {
         this.error = e.message || "Failed to fetch notifications";

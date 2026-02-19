@@ -6,6 +6,7 @@ const Ride = require("../models/Ride");
 const Booking = require("../models/Booking");
 const Notification = require("../models/Notification");
 const NotificationService = require("../services/notificationService");
+const RefundService = require("../services/refundService");
 const { safeGet, safeSetex, safeDel, safeKeys } = require("../config/redisClient");
 
 /**
@@ -493,11 +494,31 @@ exports.getRequest = async (req, res, next) => {
     const isPassenger = request.passenger._id?.toString() === userId || request.passenger?.toString() === userId;
     const isMatchedDriver = request.matched_driver?._id?.toString() === userId || request.matched_driver?.toString() === userId;
     const hasOffer = request.offers?.some((o) => o.driver?.toString() === userId || o.driver?._id?.toString() === userId);
-    if (!isPassenger && !isMatchedDriver && !hasOffer) {
+    
+    // Allow drivers to view pending requests
+    const isDriver = req.user.role === "driver" || req.user.role === "both";
+    const isPending = request.status === "pending";
+
+    if (!isPassenger && !isMatchedDriver && !hasOffer && !(isDriver && isPending)) {
       return res.status(403).json({ message: "You do not have access to this request" });
     }
 
-    res.json({ request });
+    // Privacy Masking: Hide personal info if not matched yet
+    let requestData = request.toObject({ virtuals: true });
+    if (!isPassenger && !isMatchedDriver) {
+        if (requestData.passenger) {
+            delete requestData.passenger.phone;
+            // Optional: mask last name
+            if (requestData.passenger.last_name) {
+                requestData.passenger.last_name = requestData.passenger.last_name[0] + ".";
+            }
+        }
+    }
+
+    // Add flag to indicate if the current user has already made an offer
+    requestData.has_offer_from_user = hasOffer;
+
+    res.json({ request: requestData });
   } catch (error) {
     next(error);
   }
@@ -935,6 +956,22 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
       console.log(
         `Wallet payment completed: ${totalAmount} cents from passenger, ${driverEarnings} cents to driver`,
       );
+
+      // Notify Passenger
+      await NotificationService.notifyWalletUpdate(userId, {
+        amount: totalAmount / 100,
+        type: "debit",
+        message: `Paid €${(totalAmount / 100).toFixed(2)} for ride request`,
+        transaction_id: request._id,
+      });
+
+      // Notify Driver
+      await NotificationService.notifyWalletUpdate(offer.driver, {
+        amount: driverEarnings / 100,
+        type: "credit",
+        message: `Received €${(driverEarnings / 100).toFixed(2)} for ride offer`,
+        transaction_id: request._id,
+      });
     } else if (payment_method === "card") {
       // Verify payment with Stripe
       if (!payment_intent_id) {
@@ -995,8 +1032,54 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
         console.log(
           `Card payment credited to driver wallet: ${driverEarnings} cents`,
         );
+
+        // Notify Driver (even for card payment, they get wallet credit)
+        await NotificationService.notifyWalletUpdate(offer.driver, {
+          amount: driverEarnings / 100,
+          type: "credit",
+          message: `Received €${(driverEarnings / 100).toFixed(2)} for ride offer (Card payment)`,
+          transaction_id: payment_intent_id,
+        });
       }
-    } else {
+ 
+       // Create transaction for passenger (card history)
+       try {
+         const passengerWallet = await Wallet.getOrCreateWallet(userId);
+         const passenger = await User.findById(userId);
+         await Transaction.create({
+           wallet_id: passengerWallet._id,
+           user_id: userId,
+           type: "ride_payment",
+           amount: -totalAmount,
+           gross_amount: totalAmount,
+           fee_amount: 0,
+           fee_percentage: 0,
+           net_amount: totalAmount,
+           currency: "EUR",
+           status: "completed",
+           reference_type: "ride",
+           reference_id: request._id,
+           stripe_payment_intent_id: payment_intent_id,
+           description: `Payment for ride request - ${request.seats_needed} seat(s) (Card)`,
+           ride_details: {
+             ride_id: offer.ride || request._id,
+             booking_id: request._id,
+             driver_id: offer.driver,
+             driver_name:
+               (driver?.first_name ? `${driver.first_name} ${driver.last_name || ""}` : null) ||
+               driver?.name ||
+               "Driver",
+             seats: request.seats_needed,
+             price_per_seat: offer.price_per_seat,
+             route: `${request.location_city || "Origin"} → ${request.airport?.name || "Airport"}`,
+           },
+           processed_at: new Date(),
+         });
+         console.log(`Created card payment transaction for passenger ${userId}`);
+       } catch (txError) {
+         console.error("Error creating passenger card payment transaction:", txError);
+       }
+     } else {
       return res.status(400).json({ message: "Invalid payment method" });
     }
 
@@ -1135,12 +1218,19 @@ exports.acceptOfferWithPayment = async (req, res, next) => {
                         "$$o.payment_method",
                       ],
                     },
+                    payment_intent_id: {
+                      $cond: {
+                        if: { $eq: ["$$o._id", offerIdObjPay] },
+                        then: payment_method === "card" ? (payment_intent_id || "$$o.payment_intent_id") : "$$o.payment_intent_id",
+                        else: "$$o.payment_intent_id",
+                      },
+                    },
                     paid_at: {
-                      $cond: [
-                        { $eq: ["$$o._id", offerIdObjPay] },
-                        paidAt,
-                        "$$o.paid_at",
-                      ],
+                      $cond: {
+                        if: { $eq: ["$$o._id", offerIdObjPay] },
+                        then: paidAt,
+                        else: "$$o.paid_at",
+                      },
                     },
                   },
                 ],
@@ -1381,13 +1471,89 @@ exports.cancelRequest = async (req, res, next) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
-    if (request.status === "accepted") {
-      return res
-        .status(400)
-        .json({ message: "Cannot cancel a request that has already been accepted" });
+    if (request.status === "accepted" || request.status === "confirmed") {
+        // Find associated booking
+        const booking = await Booking.findOne({
+            ride_id: request.matched_ride,
+            passenger_id: req.user.id,
+            status: { $in: ["pending", "accepted", "confirmed"] }
+        }).populate("ride_id");
+
+        if (booking) {
+             // 1. Process Refund via Booking
+            if (booking.payment_status === "paid") {
+                 try {
+                     const result = await RefundService.processRefund(booking, "passenger_cancelled");
+                     if (!result.success) {
+                         console.warn(`Refund failed for booking ${booking._id}: ${result.message}`);
+                     }
+                 } catch (err) {
+                     console.error("Refund error during request cancel:", err);
+                 }
+            }
+
+            // 2. Release seats on Ride
+            const rideId = booking.ride_id._id || booking.ride_id;
+            const updateInc = { seats_left: booking.seats };
+            if (booking.luggage_count > 0) {
+               updateInc.luggage_left = booking.luggage_count;
+            }
+            await Ride.findByIdAndUpdate(rideId, { $inc: updateInc });
+
+            // 3. Mark booking as cancelled
+            booking.status = "cancelled";
+            await booking.save();
+
+            // 4. Notify Driver
+            const driverId = booking.ride_id.driver_id;
+            if (driverId) {
+                await NotificationService.notifyBookingCancelled(
+                    driverId.toString(),
+                    {
+                        id: booking._id,
+                        ride_id: rideId,
+                        request_id: request._id
+                    },
+                    true
+                );
+            }
+        } else {
+            // CASE: Accepted but no Booking record (e.g. no ride_id was provided in offer)
+            
+            // 1. Process Refund via Request directly
+            if (request.payment_status === "paid") {
+                try {
+                    const result = await RefundService.processRideRequestRefund(request, "passenger_cancelled");
+                    if (!result.success) {
+                        console.warn(`Refund failed for request ${request._id}: ${result.message}`);
+                    }
+                } catch (err) {
+                    console.error("Refund error for request-only cancel:", err);
+                }
+            }
+
+            // 2. Notify Driver (even if no booking exists)
+            const driverId = request.matched_driver;
+            if (driverId) {
+                try {
+                    await NotificationService.notifyBookingCancelled(
+                        driverId.toString(),
+                        {
+                            id: request._id, // Use request ID as fallback
+                            ride_id: request.matched_ride,
+                            request_id: request._id
+                        },
+                        true
+                    );
+                } catch (notifErr) {
+                    console.error("Failed to notify driver during request cancel:", notifErr);
+                }
+            }
+        }
     }
 
-    await RideRequest.deleteOne({ _id: request._id });
+    request.status = "cancelled";
+    await request.save();
 
     const userRequestKeysCancel = await safeKeys(`user_requests:${req.user.id}:*`);
     if (userRequestKeysCancel.length > 0) await safeDel(userRequestKeysCancel);

@@ -729,16 +729,77 @@ export default function RequestDetailsScreen() {
         </View>
       )}
 
+      {/* Cancel Button for Owner (Accepted/Confirmed) */}
+      {isOwner && ['accepted', 'confirmed'].includes(request.status) && (
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.cancelButton]}
+            onPress={() => {
+              Alert.alert(
+                "Cancel Booking",
+                "Are you sure you want to cancel this booking? This action cannot be undone.",
+                [
+                  { text: "No", style: "cancel" },
+                  { 
+                    text: "Yes, Cancel", 
+                    style: "destructive",
+                    onPress: async () => {
+                      setIsCancelling(true);
+                      try {
+                        const { cancelRequest } = useRequestStore.getState();
+                        await cancelRequest(id);
+                        Alert.alert("Success", "Booking cancelled successfully", [
+                           { text: "OK", onPress: () => router.replace("/(tabs)/explore?tab=active") }
+                        ]);
+                      } catch (error: any) {
+                        Alert.alert("Error", error.message || "Failed to cancel");
+                      } finally {
+                        setIsCancelling(false);
+                      }
+                    }
+                  }
+                ]
+              );
+            }}
+            disabled={isCancelling}
+          >
+            {isCancelling ? (
+              <ActivityIndicator color="#DC2626" />
+            ) : (
+              <>
+                <Ionicons name="close-circle" size={20} color="#DC2626" />
+                <Text style={styles.cancelButtonText}>Cancel Booking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Offer a Ride button for non-owners */}
       {!isOwner && request.status === 'pending' && (
         <View style={styles.footer}>
-          <TouchableOpacity 
-            style={styles.offerRideButton}
-            onPress={openOfferModal}
-          >
-            <Ionicons name="car" size={22} color="#fff" />
-            <Text style={styles.offerRideButtonText}>Offer a Ride for This Request</Text>
-          </TouchableOpacity>
+          {(() => {
+            const hasOffer = request.has_offer_from_user;
+            console.log("DEBUG REQUEST DETAILS FOOTER:");
+            console.log("- User ID:", user?.id);
+            console.log("- Request Status:", request.status);
+            console.log("- Has Offer Flag:", hasOffer);
+            
+            return hasOffer ? (
+              <View style={[styles.offerRideButton, { backgroundColor: '#E2E8F0' }]}>
+                <Ionicons name="checkmark-circle" size={22} color="#64748B" />
+                <Text style={[styles.offerRideButtonText, { color: '#64748B' }]}>Offer Sent</Text>
+              </View>
+            ) : (
+              <TouchableOpacity 
+                style={styles.offerRideButton}
+                onPress={openOfferModal}
+              >
+                <Ionicons name="car" size={22} color="#fff" />
+                <Text style={styles.offerRideButtonText}>Offer a Ride for This Request</Text>
+              </TouchableOpacity>
+            );
+          })()}
         </View>
       )}
 
@@ -1144,17 +1205,6 @@ const styles = StyleSheet.create({
     color: "#007AFF",
     marginLeft: 8,
   },
-  cancelButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FEF2F2",
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#FECACA",
-  },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: "600",
@@ -1342,6 +1392,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#fff",
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    gap: 8,
+    flex: 1,
+  },
+  cancelButton: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#DC2626", 
   },
   // Offer Card Styles
   offerCard: {
