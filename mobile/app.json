@@ -21,12 +21,9 @@
         "ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.INTERNET"
       ],
-      "package": "com.saidare.mobile"
+      "package": "com.farizadam.mobile"
     },
     "web": {
       "output": "static",
@@ -85,16 +82,12 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2d0bd523-8a89-4713-810b-ad6574933ec0"
+        "projectId": "89fb7b60-d149-4b34-b56c-ab6c42f05e85"
       }
     },
-    "owner": "saiid",
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/2d0bd523-8a89-4713-810b-ad6574933ec0"
-    },
-    "ios": {}
+    "updates": {}
   }
 }

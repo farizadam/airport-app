@@ -63,7 +63,13 @@ export default function RideMap({ items = [], routeCoordinates, initialRegion, o
            try { location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }); }
            catch { 
              try { location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); }
-             catch { /* ignore */ }
+             catch { 
+               try { location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }); }
+               catch { 
+                  try { location = await Location.getLastKnownPositionAsync(); }
+                  catch { /* ignore */ }
+               }
+             }
            }
 
            if (location) {
