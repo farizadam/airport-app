@@ -21,6 +21,7 @@ import { useAirportStore } from "@/store/airportStore";
 import { useRideStore } from "@/store/rideStore";
 import MapLocationPicker from "@/components/MapLocationPicker";
 import LeafletMap from "@/components/LeafletMap";
+import TimePickerModal from "../../../src/components/TimePickerModal";
 import { toast } from "../../../src/store/toastStore";
 
 export default function CreateRequestScreen() {
@@ -514,10 +515,10 @@ export default function CreateRequestScreen() {
           >
             <Ionicons name="time" size={20} color="#007AFF" />
             <Text style={styles.dateTimeText}>
-              {preferredDateTime.toLocaleTimeString("en-GB", {
-                hour: "2-digit",
+              {preferredDateTime.toLocaleTimeString("en-US", {
+                hour: "numeric",
                 minute: "2-digit",
-                hour12: false,
+                hour12: true,
               })}
             </Text>
           </TouchableOpacity>
@@ -535,16 +536,15 @@ export default function CreateRequestScreen() {
           />
         )}
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={preferredDateTime}
-            mode="time"
-            onChange={(event, date) => {
-              setShowTimePicker(false);
-              if (date) setPreferredDateTime(date);
-            }}
-          />
-        )}
+        <TimePickerModal
+          visible={showTimePicker}
+          initialDate={preferredDateTime}
+          onClose={() => setShowTimePicker(false)}
+          onSelect={(date: Date) => {
+            setPreferredDateTime(date);
+            setShowTimePicker(false);
+          }}
+        />
 
         {/* Time Flexibility */}
         <Text style={styles.label}>Time Flexibility (minutes)</Text>

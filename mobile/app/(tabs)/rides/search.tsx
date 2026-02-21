@@ -6,6 +6,7 @@ import { useRequestStore } from "@/store/requestStore";
 import { Airport } from "@/types";
 import api from "@/lib/api";
 import MapLocationPicker, { MapLocationData } from "@/components/MapLocationPicker";
+import TimePickerModal from "../../../src/components/TimePickerModal";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -408,19 +409,43 @@ export default function SearchScreen() {
 
       let location;
       try {
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!servicesEnabled) {
+          toast.warning("Location Services Disabled", "Please enable location services on your device setting.");
+          setGettingLocation(false);
+          return;
+        }
+
         // Try High accuracy first
         location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
+          timeout: 10000,
         });
       } catch (err) {
         console.log("High accuracy failed, retrying with Balanced...", err);
-        // Fallback to Balanced for non-GMS devices
+        // Fallback to Balanced
         try {
           location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
+            timeout: 10000,
           });
         } catch (balancedErr) {
-           console.log("Balanced location failed");
+           console.log("Balanced location failed, retrying with Lowest...", balancedErr);
+           // Fallback to Lowest (often works on emulators/devices with poor GPS)
+           try {
+             location = await Location.getCurrentPositionAsync({
+               accuracy: Location.Accuracy.Lowest,
+               timeout: 10000,
+             });
+           } catch (lowestErr) {
+             console.log("Lowest accuracy failed, trying last known location...", lowestErr);
+             // Final fallback: Last known location
+             try {
+               location = await Location.getLastKnownPositionAsync();
+             } catch (lastKnownErr) {
+               console.log("Last known location failed", lastKnownErr);
+             }
+           }
         }
       }
 
@@ -455,7 +480,8 @@ export default function SearchScreen() {
             toast.info("Location Unavailable", "GPS signal not found. Please use the map to select your location or search for an address.");
           }
       } else {
-         toast.error("Error", "Could not retrieve location. Please search manually.");
+         console.log("All location attempts failed.");
+         toast.error("Location Error", "Could not determine your location. Please enter your address manually.");
       }
 
     } catch (error) {
@@ -1198,14 +1224,16 @@ export default function SearchScreen() {
         />
       )}
 
-      {showTimePicker && (
-        <DateTimePicker
-          value={selectedDate}
-          mode="time"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={handleTimeChange}
-        />
-      )}
+      <TimePickerModal
+        visible={showTimePicker}
+        initialDate={selectedDate}
+        onClose={() => setShowTimePicker(false)}
+        onSelect={(date: Date) => {
+          setSelectedDate(date);
+          setShowTimePicker(false);
+          setIncludeTime(true);
+        }}
+      />
 
       <View style={styles.stepNavigation}>
         <TouchableOpacity
@@ -1255,7 +1283,7 @@ export default function SearchScreen() {
             <Ionicons name="calendar" size={16} color={themeColor} />
             <Text style={styles.summaryText}>
               {selectedDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-              {includeTime && ` at ${selectedDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}`}
+              {includeTime && ` at ${selectedDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`}
             </Text>
           </View>
         </View>

@@ -22,6 +22,7 @@ import { useRequestStore } from "../../../src/store/requestStore";
 import MapLocationPicker from "../../../src/components/MapLocationPicker";
 import RideMap from "@/components/RideMap";
 import LeafletMap from "@/components/LeafletMap";
+import TimePickerModal from "../../../src/components/TimePickerModal";
 import { Airport } from "../../../src/types";
 import { toast } from "../../../src/store/toastStore";
 
@@ -305,10 +306,10 @@ export default function CreateRideScreen() {
   };
 
   const formatTime = (t: Date) => {
-    return t.toLocaleTimeString("en-GB", {
-      hour: "2-digit",
+    return t.toLocaleTimeString("en-US", {
+      hour: "numeric",
       minute: "2-digit",
-      hour12: false,
+      hour12: true,
     });
   };
 
@@ -609,22 +610,15 @@ export default function CreateRideScreen() {
           />
         )}
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={departureDateTime}
-            mode="time"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(event, selectedTime) => {
-              setShowTimePicker(Platform.OS === "ios");
-              if (selectedTime) {
-                const newDate = new Date(departureDateTime);
-                newDate.setHours(selectedTime.getHours());
-                newDate.setMinutes(selectedTime.getMinutes());
-                setDepartureDateTime(newDate);
-              }
-            }}
-          />
-        )}
+        <TimePickerModal
+          visible={showTimePicker}
+          initialDate={departureDateTime}
+          onClose={() => setShowTimePicker(false)}
+          onSelect={(date) => {
+            setDepartureDateTime(date);
+            setShowTimePicker(false);
+          }}
+        />
 
         {/* Available Seats */}
         <Text style={styles.label}>Available Seats</Text>
