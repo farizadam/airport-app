@@ -127,7 +127,7 @@ export default function MyRidesScreen() {
             {ride.bookings.slice(0, 2).map((b: any) => (
               <Text key={b.id} style={styles.bookingItem}>
                 {b.passenger_first_name || "Passenger"}{" "}
-                {b.passenger_last_name || ""} · {b.seats} seat(s){(b.luggage && b.luggage.length > 0) ? ` · ${b.luggage.filter((l: any) => l.quantity > 0).map((l: any) => `${l.quantity}× ${l.type}`).join(', ')}` : b.luggage_count > 0 ? ` · ${b.luggage_count} bag(s)` : ''} ·{" "}
+                {b.passenger_last_name || ""} · {b.seats} seat(s){(b.luggage && b.luggage.filter((l: any) => l.quantity > 0).length > 0) ? ` · ${b.luggage.filter((l: any) => l.quantity > 0).map((l: any) => `${l.quantity}\u00d7 ${l.type}`).join(', ')}` : ''} ·{" "}
                 {b.status}
               </Text>
             ))}

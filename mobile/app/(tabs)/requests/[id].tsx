@@ -351,14 +351,23 @@ export default function RequestDetailsScreen() {
               <Text style={styles.detailLabel}>Seats</Text>
               <Text style={styles.detailValue}>{request.seats_needed}</Text>
             </View>
-            <View style={styles.detailItem}>
+            <View style={[styles.detailItem, { flex: 1.5 }]}>
               <Ionicons name="briefcase-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Luggage</Text>
-              <Text style={styles.detailValue}>
-                {(request.luggage && request.luggage.length > 0)
-                  ? request.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
-                  : request.luggage_count || 0}
-              </Text>
+              {(request.luggage && request.luggage.filter(l => l.quantity > 0).length > 0) ? (
+                <View style={styles.luggageTagRow}>
+                  {request.luggage.filter(l => l.quantity > 0).map((l, i) => {
+                    const icons: Record<string, string> = { sac: '🎒', '10kg': '🧳', '20kg': '💼', hors_norme: '📦' };
+                    return (
+                      <View key={i} style={styles.luggageTag}>
+                        <Text style={styles.luggageTagText}>{icons[l.type] || '🧳'} {l.quantity}× {l.type}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.detailValue}>None</Text>
+              )}
             </View>
             <View style={styles.detailItem}>
               <Ionicons name="cash-outline" size={20} color="#64748B" />
@@ -702,5 +711,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
+  },
+  luggageTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
+    justifyContent: 'center',
+  },
+  luggageTag: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  luggageTagText: {
+    fontSize: 12,
+    color: '#1D4ED8',
+    fontWeight: '600',
   },
 });

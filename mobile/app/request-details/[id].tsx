@@ -436,14 +436,23 @@ export default function RequestDetailsScreen() {
               <Text style={styles.detailLabel}>Seats</Text>
               <Text style={styles.detailValue}>{request.seats_needed}</Text>
             </View>
-            <View style={styles.detailItem}>
+            <View style={styles.luggageDetailItem}>
               <Ionicons name="briefcase-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Luggage</Text>
-              <Text style={styles.detailValue}>
-                {(request.luggage && request.luggage.length > 0)
-                  ? request.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
-                  : request.luggage_count || 0}
-              </Text>
+              {(request.luggage && request.luggage.filter(l => l.quantity > 0).length > 0) ? (
+                <View style={styles.luggageTagRow}>
+                  {request.luggage.filter(l => l.quantity > 0).map((l, i) => {
+                    const icons: Record<string, string> = { sac: '🎒', '10kg': '🧳', '20kg': '💼', hors_norme: '📦' };
+                    return (
+                      <View key={i} style={styles.luggageTag}>
+                        <Text style={styles.luggageTagText}>{icons[l.type] || '🧳'} {l.quantity}× {l.type}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.detailValue}>None</Text>
+              )}
             </View>
             <TouchableOpacity 
               style={[styles.detailItem, { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 8 }]}
@@ -591,6 +600,18 @@ export default function RequestDetailsScreen() {
                       </TouchableOpacity>
                     </View>
                   )}
+
+                  {offer.status === 'accepted' && (
+                    <View style={styles.offerActions}>
+                      <TouchableOpacity
+                        style={[styles.offerActionBtn, styles.chatBtn, { flex: 1 }]}
+                        onPress={() => router.push({ pathname: "/chat", params: { requestId: request._id } })}
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
+                        <Text style={styles.offerActionBtnText}>Chat with Driver</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -659,11 +680,20 @@ export default function RequestDetailsScreen() {
                   </View>
                   <View style={styles.tripSummaryRow}>
                     <Text style={styles.tripSummaryLabel}>Luggage:</Text>
-                    <Text style={styles.tripSummaryValue}>
-                      {(request.luggage && request.luggage.length > 0)
-                        ? request.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
-                        : request.luggage_count || 0}
-                    </Text>
+                    {(request.luggage && request.luggage.filter(l => l.quantity > 0).length > 0) ? (
+                      <View style={styles.luggageTagRow}>
+                        {request.luggage.filter(l => l.quantity > 0).map((l, i) => {
+                          const icons: Record<string, string> = { sac: '🎒', '10kg': '🧳', '20kg': '💼', hors_norme: '📦' };
+                          return (
+                            <View key={i} style={styles.luggageTag}>
+                              <Text style={styles.luggageTagText}>{icons[l.type] || '🧳'} {l.quantity}× {l.type}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <Text style={styles.tripSummaryValue}>None</Text>
+                    )}
                   </View>
                   <View style={styles.tripSummaryRow}>
                     <Text style={styles.tripSummaryLabel}>Price per seat:</Text>
@@ -1604,5 +1634,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  luggageDetailItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  luggageTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
+    justifyContent: 'center',
+  },
+  luggageTag: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  luggageTagText: {
+    fontSize: 12,
+    color: '#1D4ED8',
+    fontWeight: '600',
+  },
+  chatBtn: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+    marginTop: 8,
   },
 });
