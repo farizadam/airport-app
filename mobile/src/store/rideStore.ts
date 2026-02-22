@@ -36,7 +36,12 @@ interface CreateRideData {
   home_longitude?: number;
   total_seats: number;
   price_per_seat: number;
-  luggage_capacity?: number;
+  luggage_capacity?: {
+    max_10kg: number;
+    max_20kg: number;
+    max_hors_norme: number;
+    max_sac: number;
+  };
   driver_comment?: string;
 }
 
@@ -153,7 +158,7 @@ export const useRideStore = create<RideState>((set) => ({
         home_longitude: data.home_longitude,
         seats_total: data.total_seats,
         price_per_seat: data.price_per_seat,
-        luggage_capacity: data.luggage_capacity || 0,
+        luggage_capacity: data.luggage_capacity,
         comment: data.driver_comment || "",
       };
       console.log("🚗 Creating ride with data:", JSON.stringify(backendData, null, 2));
