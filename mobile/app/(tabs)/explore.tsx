@@ -131,7 +131,7 @@ export default function MyTripsScreen() {
         seats: b.seats_booked || b.seats,
         price: b.ride?.price_per_seat,
         direction: b.ride?.direction,
-        luggage_count: b.luggage_count,
+        luggage: b.luggage,
         driver: {
           id: b.driver_id || b.ride?.driver?.id || b.ride?.driver?._id,
           _id: b.driver_id || b.ride?.driver?._id || b.ride?.driver?.id,
@@ -343,7 +343,7 @@ export default function MyTripsScreen() {
         seats: b.seats_booked || b.seats,
         price: b.ride?.price_per_seat,
         direction: b.ride?.direction,
-        luggage_count: b.luggage_count,
+        luggage: b.luggage,
         driver: {
           id: b.driver_id || b.ride?.driver?.id || b.ride?.driver?._id,
           _id: b.driver_id || b.ride?.driver?._id || b.ride?.driver?.id,
@@ -491,7 +491,7 @@ export default function MyTripsScreen() {
           departureTime: b.ride?.departure_datetime || b.ride?.datetime_start,
           seats: b.seats_booked,
           direction: b.ride?.direction,
-          luggage_count: b.luggage_count,
+          luggage: b.luggage,
           driver: {
             id: b.driver_id || b.ride?.driver?.id || b.ride?.driver?._id,
             _id: b.driver_id || b.ride?.driver?._id || b.ride?.driver?.id,

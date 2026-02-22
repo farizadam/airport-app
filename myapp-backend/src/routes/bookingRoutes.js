@@ -11,7 +11,14 @@ router.use(authMiddleware);
 // Validation schemas
 const createBookingSchema = Joi.object({
   seats: validationRules.positiveInt,
-  luggage_count: Joi.number().integer().min(0).default(0),
+  luggage: Joi.array()
+    .items(
+      Joi.object({
+        type: Joi.string().valid("10kg", "20kg", "hors_norme", "sac").required(),
+        quantity: Joi.number().integer().min(1).required(),
+      })
+    )
+    .default([]),
 });
 
 const updateBookingSchema = Joi.object({

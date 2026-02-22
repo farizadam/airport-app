@@ -439,7 +439,11 @@ export default function RequestDetailsScreen() {
             <View style={styles.detailItem}>
               <Ionicons name="briefcase-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Luggage</Text>
-              <Text style={styles.detailValue}>{request.luggage_count || 0}</Text>
+              <Text style={styles.detailValue}>
+                {(request.luggage && request.luggage.length > 0)
+                  ? request.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
+                  : request.luggage_count || 0}
+              </Text>
             </View>
             <TouchableOpacity 
               style={[styles.detailItem, { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 8 }]}
@@ -515,7 +519,7 @@ export default function RequestDetailsScreen() {
                       }}
                     >
                       <ProfileAvatar
-                        userId={driverObj._id || null} // Removed unsupported id property
+                        userId={driverObj._id || undefined} // Removed unsupported id property
                         avatarUrl={driverObj?.avatar_url || undefined} // Added fallback for avatarUrl
                         size="small"
                         showRating
@@ -655,7 +659,11 @@ export default function RequestDetailsScreen() {
                   </View>
                   <View style={styles.tripSummaryRow}>
                     <Text style={styles.tripSummaryLabel}>Luggage:</Text>
-                    <Text style={styles.tripSummaryValue}>{request.luggage_count || 0}</Text>
+                    <Text style={styles.tripSummaryValue}>
+                      {(request.luggage && request.luggage.length > 0)
+                        ? request.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
+                        : request.luggage_count || 0}
+                    </Text>
                   </View>
                   <View style={styles.tripSummaryRow}>
                     <Text style={styles.tripSummaryLabel}>Price per seat:</Text>

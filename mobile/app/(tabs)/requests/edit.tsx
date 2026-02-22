@@ -53,7 +53,7 @@ export default function EditRequestScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [timeFlexibility, setTimeFlexibility] = useState("30");
   const [seatsNeeded, setSeatsNeeded] = useState("1");
-  const [luggageCount, setLuggageCount] = useState("1");
+  const [luggage, setLuggage] = useState({ '10kg': 0, '20kg': 0, 'hors_norme': 0, 'sac': 0 });
   const [maxPrice, setMaxPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [isInitializing, setIsInitializing] = useState(true);
@@ -113,10 +113,16 @@ export default function EditRequestScreen() {
 
       setTimeFlexibility(String(request.time_flexibility || "30"));
       setSeatsNeeded(String(request.seats_needed || "1"));
-      setLuggageCount(String(request.luggage_count || "0"));
+      // Prefill per-type luggage
+      const existingLuggage: Record<string, number> = { '10kg': 0, '20kg': 0, 'hors_norme': 0, 'sac': 0 };
+      if (request.luggage && Array.isArray(request.luggage)) {
+        request.luggage.forEach((item: any) => {
+          if (item.type in existingLuggage) existingLuggage[item.type] = item.quantity;
+        });
+      }
+      setLuggage(existingLuggage as typeof luggage);
       setMaxPrice(request.max_price_per_seat ? String(request.max_price_per_seat) : "");
       setNotes(request.notes || "");
-      
       setIsInitializing(false);
     }
   }, [request, id, airports]);
@@ -154,7 +160,9 @@ export default function EditRequestScreen() {
         preferred_datetime: preferredDateTime.toISOString(),
         time_flexibility: parseInt(timeFlexibility) || 30,
         seats_needed: parseInt(seatsNeeded) || 1,
-        luggage_count: parseInt(luggageCount) || 1,
+        luggage: Object.entries(luggage)
+          .filter(([, qty]) => qty > 0)
+          .map(([type, quantity]) => ({ type, quantity })),
         max_price_per_seat: maxPrice ? parseFloat(maxPrice) : undefined,
         notes: notes || undefined,
       });
@@ -500,56 +508,57 @@ export default function EditRequestScreen() {
           ))}
         </View>
 
-        {/* Seats & Luggage */}
-        <View style={styles.row}>
-          <View style={styles.halfInput}>
-            <Text style={styles.label}>Seats Needed</Text>
-            <View style={styles.counterRow}>
-              <TouchableOpacity
-                style={styles.counterButton}
-                onPress={() =>
-                  setSeatsNeeded(
-                    Math.max(1, parseInt(seatsNeeded) - 1).toString()
-                  )
-                }
-              >
-                <Ionicons name="remove" size={20} color="#007AFF" />
-              </TouchableOpacity>
-              <Text style={styles.counterValue}>{seatsNeeded}</Text>
-              <TouchableOpacity
-                style={styles.counterButton}
-                onPress={() =>
-                  setSeatsNeeded((parseInt(seatsNeeded) + 1).toString())
-                }
-              >
-                <Ionicons name="add" size={20} color="#007AFF" />
-              </TouchableOpacity>
-            </View>
+        {/* Seats Needed */}
+        <View>
+          <Text style={styles.label}>Seats Needed</Text>
+          <View style={styles.counterRow}>
+            <TouchableOpacity
+              style={styles.counterButton}
+              onPress={() => setSeatsNeeded(Math.max(1, parseInt(seatsNeeded) - 1).toString())}
+            >
+              <Ionicons name="remove" size={20} color="#007AFF" />
+            </TouchableOpacity>
+            <Text style={styles.counterValue}>{seatsNeeded}</Text>
+            <TouchableOpacity
+              style={styles.counterButton}
+              onPress={() => setSeatsNeeded((parseInt(seatsNeeded) + 1).toString())}
+            >
+              <Ionicons name="add" size={20} color="#007AFF" />
+            </TouchableOpacity>
           </View>
-          <View style={styles.halfInput}>
-            <Text style={styles.label}>Luggage</Text>
-            <View style={styles.counterRow}>
-              <TouchableOpacity
-                style={styles.counterButton}
-                onPress={() =>
-                  setLuggageCount(
-                    Math.max(0, parseInt(luggageCount) - 1).toString()
-                  )
-                }
-              >
-                <Ionicons name="remove" size={20} color="#007AFF" />
-              </TouchableOpacity>
-              <Text style={styles.counterValue}>{luggageCount}</Text>
-              <TouchableOpacity
-                style={styles.counterButton}
-                onPress={() =>
-                  setLuggageCount((parseInt(luggageCount) + 1).toString())
-                }
-              >
-                <Ionicons name="add" size={20} color="#007AFF" />
-              </TouchableOpacity>
+        </View>
+
+        {/* Luggage — per type */}
+        <Text style={styles.label}>My Luggage</Text>
+        <View style={styles.luggageContainer}>
+          {([
+            { key: '10kg'       as const, label: '🧳 Small Suitcase', sub: 'Up to 10kg' },
+            { key: '20kg'       as const, label: '💼 Large Suitcase', sub: 'Up to 20kg' },
+            { key: 'hors_norme' as const, label: '📦 Oversized',      sub: 'Bulky items' },
+            { key: 'sac'        as const, label: '🎒 Cabin Bag',      sub: 'Handbag / Sac' },
+          ]).map(({ key, label, sub }) => (
+            <View key={key} style={styles.luggageRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.luggageLabel}>{label}</Text>
+                <Text style={styles.luggageSub}>{sub}</Text>
+              </View>
+              <View style={styles.itemCounter}>
+                <TouchableOpacity
+                  onPress={() => setLuggage(prev => ({ ...prev, [key]: Math.max(0, prev[key] - 1) }))}
+                  style={styles.stepButton}
+                >
+                  <Ionicons name="remove" size={20} color={luggage[key] > 0 ? "#007AFF" : "#ccc"} />
+                </TouchableOpacity>
+                <Text style={styles.counterValue}>{luggage[key]}</Text>
+                <TouchableOpacity
+                  onPress={() => setLuggage(prev => ({ ...prev, [key]: Math.min(10, prev[key] + 1) }))}
+                  style={styles.stepButton}
+                >
+                  <Ionicons name="add" size={20} color="#007AFF" />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          ))}
         </View>
 
         {/* Max Price */}
@@ -922,5 +931,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
+  },
+  luggageContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    overflow: "hidden",
+  },
+  luggageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  luggageLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+  },
+  luggageSub: {
+    fontSize: 11,
+    color: "#888",
+    marginTop: 2,
+  },
+  itemCounter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  stepButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f8f9fa",
   },
 });

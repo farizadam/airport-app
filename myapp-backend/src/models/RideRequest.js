@@ -1,5 +1,22 @@
 const mongoose = require("mongoose");
 
+const luggageItemSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      required: true,
+      enum: ["10kg", "20kg", "hors_norme", "sac"],
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 1,
+    },
+  },
+  { _id: false }
+);
+
 const rideRequestSchema = new mongoose.Schema(
   {
     passenger: {
@@ -65,9 +82,9 @@ const rideRequestSchema = new mongoose.Schema(
       max: 8,
       default: 1,
     },
-    luggage_count: {
-      type: Number,
-      default: 1,
+    luggage: {
+      type: [luggageItemSchema],
+      default: [],
     },
     // Max price passenger is willing to pay per seat
     max_price_per_seat: {

@@ -12,7 +12,7 @@ interface BookingState {
   createBooking: (
     rideId: string, 
     seats: number,
-    luggage_count?: number,
+    luggage?: { type: string; quantity: number }[],
     pickup_location?: { address?: string; latitude?: number; longitude?: number },
     dropoff_location?: { address?: string; latitude?: number; longitude?: number }
   ) => Promise<Booking>;
@@ -66,13 +66,13 @@ export const useBookingStore = create<BookingState>((set) => ({
     }
   },
 
-  createBooking: async (rideId, seats, luggage_count, pickup_location, dropoff_location) => {
+  createBooking: async (rideId, seats, luggage, pickup_location, dropoff_location) => {
     try {
       const response = await api.post<{ data: Booking }>(
         `/rides/${rideId}/bookings`,
         { 
           seats,
-          luggage_count: luggage_count || 0,
+          luggage: luggage || [],
           pickup_location,
           dropoff_location
         }

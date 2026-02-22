@@ -58,7 +58,12 @@ export default function CreateRideScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [totalSeats, setTotalSeats] = useState(3);
-  const [luggageCapacity, setLuggageCapacity] = useState(2);
+  const [luggageCapacity, setLuggageCapacity] = useState({
+    max_10kg: 0,
+    max_20kg: 0,
+    max_hors_norme: 0,
+    max_sac: 0,
+  });
   const [pricePerSeat, setPricePerSeat] = useState("");
   const [driverComment, setDriverComment] = useState("");
   const [hasPrefilled, setHasPrefilled] = useState(false);
@@ -638,25 +643,39 @@ export default function CreateRideScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Luggage Capacity */}
-        <Text style={styles.label}>Luggage Capacity</Text>
-        <View style={styles.counterRow}>
-          <TouchableOpacity
-            style={styles.counterButton}
-            onPress={() => setLuggageCapacity(Math.max(0, luggageCapacity - 1))}
-          >
-            <Ionicons name="remove-circle-outline" size={28} color={luggageCapacity > 0 ? "#007AFF" : "#ccc"} />
-          </TouchableOpacity>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={styles.counterValue}>{luggageCapacity}</Text>
-            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>suitcase(s)</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.counterButton}
-            onPress={() => setLuggageCapacity(Math.min(10, luggageCapacity + 1))}
-          >
-            <Ionicons name="add-circle-outline" size={28} color={luggageCapacity < 10 ? "#007AFF" : "#ccc"} />
-          </TouchableOpacity>
+        {/* Luggage Capacity Section */}
+        <Text style={styles.label}>Trunk Capacity (Luggages)</Text>
+        <View style={styles.luggageContainer}>
+          {([
+            { key: 'max_10kg',       label: '🧳 Small Suitcase', sub: 'Up to 10kg' },
+            { key: 'max_20kg',       label: '💼 Large Suitcase', sub: 'Up to 20kg' },
+            { key: 'max_hors_norme', label: '📦 Oversized',      sub: 'Bulky items' },
+            { key: 'max_sac',        label: '🎒 Cabin Bag',      sub: 'Handbag / Sac' },
+          ] as const).map(({ key, label, sub }) => (
+            <View key={key} style={styles.luggageRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.luggageLabel}>{label}</Text>
+                <Text style={styles.luggageSub}>{sub}</Text>
+              </View>
+              <View style={styles.itemCounter}>
+                <TouchableOpacity
+                  onPress={() => setLuggageCapacity(prev => ({ ...prev, [key]: Math.max(0, prev[key] - 1) }))}
+                  style={styles.stepButton}
+                >
+                  <Ionicons name="remove" size={20} color={luggageCapacity[key] > 0 ? "#007AFF" : "#ccc"} />
+                </TouchableOpacity>
+
+                <Text style={styles.counterValue}>{luggageCapacity[key]}</Text>
+
+                <TouchableOpacity
+                  onPress={() => setLuggageCapacity(prev => ({ ...prev, [key]: Math.min(10, prev[key] + 1) }))}
+                  style={styles.stepButton}
+                >
+                  <Ionicons name="add" size={20} color="#007AFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
         </View>
 
         {/* Price */}
@@ -1044,5 +1063,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
+  },
+  luggageContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    overflow: "hidden",
+    marginTop: 8,
+  },
+  luggageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  luggageLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  luggageSub: {
+    fontSize: 12,
+    color: '#888',
+  },
+  itemCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  stepButton: {
+    padding: 8,
+    paddingHorizontal: 12,
   },
 });

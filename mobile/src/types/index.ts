@@ -57,8 +57,18 @@ export interface Ride {
   seats_total?: number;
   available_seats?: number;
   seats_left?: number;
-  luggage_capacity?: number;
-  luggage_left?: number;
+  luggage_capacity?: {
+    max_10kg: number;
+    max_20kg: number;
+    max_hors_norme: number;
+    max_sac: number;
+  };
+  luggage_remaining?: {
+    count_10kg: number;
+    count_20kg: number;
+    count_hors_norme: number;
+    count_sac: number;
+  };
   price_per_seat: number;
   status: "active" | "completed" | "cancelled";
   comment?: string; // Found in usage
@@ -78,7 +88,8 @@ export interface Booking {
   passenger_name?: string;
   seats?: number;
   seats_booked?: number;
-  luggage_count?: number;
+  luggage?: { type: string; quantity: number }[];
+  luggage_count?: number; // legacy
   total_price: number;
   status: "pending" | "accepted" | "rejected" | "cancelled";
   pickup_location?: {
@@ -133,10 +144,12 @@ export interface Offer {
   _id: string;
   driver: {
     _id: string;
+    id?: string;
     first_name: string;
     last_name: string;
     phone: string;
     rating: number;
+    avatar_url?: string;
   };
   ride?: string;
   price_per_seat: number;
@@ -149,6 +162,7 @@ export interface RideRequest {
   _id: string;
   passenger: {
     _id: string;
+    id?: string;
     first_name: string;
     last_name: string;
     phone: string;
@@ -172,7 +186,8 @@ export interface RideRequest {
   preferred_datetime: string;
   time_flexibility: number;
   seats_needed: number;
-  luggage_count: number;
+  luggage?: { type: string; quantity: number }[];
+  luggage_count?: number; // legacy
   max_price_per_seat?: number;
   notes?: string;
   status: "pending" | "matched" | "accepted" | "cancelled" | "expired";

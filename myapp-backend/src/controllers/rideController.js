@@ -45,8 +45,15 @@ class RideController {
       // Set seats_left equal to seats_total
       rideData.seats_left = rideData.seats_total;
 
-      // Set luggage_left equal to luggage_capacity
-      rideData.luggage_left = rideData.luggage_capacity || 0;
+      // Seed luggage_remaining to match luggage_capacity on creation
+      if (rideData.luggage_capacity) {
+        rideData.luggage_remaining = {
+          count_10kg:       rideData.luggage_capacity.max_10kg       || 0,
+          count_20kg:       rideData.luggage_capacity.max_20kg       || 0,
+          count_hors_norme: rideData.luggage_capacity.max_hors_norme || 0,
+          count_sac:        rideData.luggage_capacity.max_sac        || 0,
+        };
+      }
 
       // Ensure coordinates are numbers
       if (rideData.home_latitude)
@@ -125,8 +132,8 @@ class RideController {
         departure_datetime: populatedRide.datetime_start,
         direction: frontendDirection,
         available_seats: populatedRide.seats_left,
-        luggage_capacity: populatedRide.luggage_capacity,
-        luggage_left: populatedRide.luggage_left,
+        luggage_capacity:  populatedRide.luggage_capacity,
+        luggage_remaining: populatedRide.luggage_remaining,
         driver_comment: populatedRide.comment,
         airport: {
           name: populatedRide.airport_id?.name,
@@ -333,8 +340,8 @@ class RideController {
           departure_datetime: ride.datetime_start,
           direction: frontendDirection,
           available_seats: ride.seats_left,
-          luggage_capacity: ride.luggage_capacity,
-          luggage_left: ride.luggage_left,
+          luggage_capacity:  ride.luggage_capacity,
+          luggage_remaining: ride.luggage_remaining,
           driver: {
             first_name: ride.driver_id?.first_name,
             last_name: ride.driver_id?.last_name,
@@ -424,8 +431,8 @@ class RideController {
         departure_datetime: ride.datetime_start,
         direction: frontendDirection,
         available_seats: ride.seats_left,
-        luggage_capacity: ride.luggage_capacity,
-        luggage_left: ride.luggage_left,
+        luggage_capacity:  ride.luggage_capacity,
+        luggage_remaining: ride.luggage_remaining,
         driver: {
           first_name: ride.driver_id?.first_name,
           last_name: ride.driver_id?.last_name,
@@ -539,8 +546,8 @@ class RideController {
           departure_datetime: ride.datetime_start,
           direction: frontendDirection,
           available_seats: ride.seats_left,
-          luggage_capacity: ride.luggage_capacity,
-          luggage_left: ride.luggage_left,
+          luggage_capacity:  ride.luggage_capacity,
+          luggage_remaining: ride.luggage_remaining,
           driver_comment: ride.comment,
           airport_name: ride.airport_id?.name,
           airport_code: ride.airport_id?.iata_code,
@@ -606,10 +613,16 @@ class RideController {
         });
       }
 
-      // If luggage_capacity is being updated, adjust luggage_left accordingly
+      // If luggage_capacity is being updated, recalculate luggage_remaining per type
       if (updates.luggage_capacity !== undefined) {
-        const bookedLuggage = (existingRide.luggage_capacity || 0) - (existingRide.luggage_left || 0);
-        updates.luggage_left = Math.max(0, updates.luggage_capacity - bookedLuggage);
+        const existing = existingRide.luggage_remaining || {};
+        const cap = updates.luggage_capacity;
+        updates.luggage_remaining = {
+          count_10kg:       Math.max(0, (cap.max_10kg       || 0) - ((existingRide.luggage_capacity?.max_10kg       || 0) - (existing.count_10kg       || 0))),
+          count_20kg:       Math.max(0, (cap.max_20kg       || 0) - ((existingRide.luggage_capacity?.max_20kg       || 0) - (existing.count_20kg       || 0))),
+          count_hors_norme: Math.max(0, (cap.max_hors_norme || 0) - ((existingRide.luggage_capacity?.max_hors_norme || 0) - (existing.count_hors_norme || 0))),
+          count_sac:        Math.max(0, (cap.max_sac        || 0) - ((existingRide.luggage_capacity?.max_sac        || 0) - (existing.count_sac        || 0))),
+        };
       }
 
       const updatedRide = await Ride.findByIdAndUpdate(id, updates, {

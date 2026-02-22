@@ -61,16 +61,16 @@ const rideSchema = new mongoose.Schema(
       min: 0,
     },
     luggage_capacity: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 0,
+      max_10kg:       { type: Number, default: 0, min: 0 },
+      max_20kg:       { type: Number, default: 0, min: 0 },
+      max_hors_norme: { type: Number, default: 0, min: 0 },
+      max_sac:        { type: Number, default: 0, min: 0 },
     },
-    luggage_left: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 0,
+    luggage_remaining: {
+      count_10kg:       { type: Number, default: 0, min: 0 },
+      count_20kg:       { type: Number, default: 0, min: 0 },
+      count_hors_norme: { type: Number, default: 0, min: 0 },
+      count_sac:        { type: Number, default: 0, min: 0 },
     },
     comment: {
       type: String,

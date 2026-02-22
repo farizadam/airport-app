@@ -62,7 +62,7 @@ export default function RideDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [seats, setSeats] = useState(1);
-  const [luggageCount, setLuggageCount] = useState(0);
+  const [luggage, setLuggage] = useState({ 'sac': 0, '10kg': 0, '20kg': 0, 'hors_norme': 0 });
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
   const [actionId, setActionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -148,22 +148,6 @@ export default function RideDetailsScreen() {
   }, [id, user, ride, fetchRideById, getRideBookings, getMyBookings]);
 
   const handleBooking = async () => {
-    if (seats < 1) {
-      Alert.alert("Error", "Please select at least 1 seat");
-      return;
-    }
-
-    if (seats > (ride?.seats_left || 0)) {
-      Alert.alert("Error", "Not enough seats available");
-      return;
-    }
-
-    const luggage = luggageCount;
-    if (luggage > (ride?.luggage_left ?? ride?.luggage_capacity ?? 0)) {
-      Alert.alert("Error", `Only ${ride?.luggage_left ?? ride?.luggage_capacity ?? 0} luggage spot(s) available`);
-      return;
-    }
-
     // Check payment method selected
     if (paymentMethod === 'wallet') {
       processWalletPayment();
@@ -178,7 +162,11 @@ export default function RideDetailsScreen() {
       
       console.log("Processing wallet payment for ride:", id, "seats:", seats);
       
-      const result = await payWithWallet(id!, seats, luggageCount);
+      const luggageArr = Object.entries(luggage)
+        .filter(([, qty]) => qty > 0)
+        .map(([type, quantity]) => ({ type, quantity }));
+      
+      const result = await payWithWallet(id!, seats, luggageArr);
       
       if (result.success) {
         // Refresh bookings
@@ -204,11 +192,15 @@ export default function RideDetailsScreen() {
       
       console.log("Creating payment intent for ride:", id, "seats:", seats);
       
+      const luggageArr = Object.entries(luggage)
+        .filter(([, qty]) => qty > 0)
+        .map(([type, quantity]) => ({ type, quantity }));
+
       // Step 1: Create PaymentIntent (NO booking yet)
       const response = await api.post("/payments/create-intent", {
         rideId: id,
         seats: seats,
-        luggage_count: luggageCount,
+        luggage: luggageArr,
       });
       
       console.log("Payment intent response:", response.data);
@@ -245,7 +237,7 @@ export default function RideDetailsScreen() {
         paymentIntentId: paymentIntentId,
         rideId: id,
         seats: seats,
-        luggage_count: luggageCount,
+        luggage: luggageArr,
       });
       
       console.log("Complete response:", completeResponse.data);
@@ -486,9 +478,9 @@ export default function RideDetailsScreen() {
                   {myBooking.seats} seat(s)
                 </Text>
               )}
-              {((myBooking.luggage_count ?? 0) > 0) && (
+              {(myBooking.luggage && myBooking.luggage.length > 0) && (
                 <Text style={styles.bookingBannerMeta}>
-                  {myBooking.luggage_count} luggage item(s)
+                  {myBooking.luggage.map((i: any) => `${i.quantity}× ${i.type}`).join(', ')}
                 </Text>
               )}
             </View>
@@ -688,10 +680,10 @@ export default function RideDetailsScreen() {
                   <Text style={styles.tripSummaryLabel}>Seats booked:</Text>
                   <Text style={styles.tripSummaryValue}>{myBooking.seats || myBooking.seats_booked || 1}</Text>
                 </View>
-                {((myBooking.luggage_count ?? 0) > 0) && (
+                {(myBooking.luggage && myBooking.luggage.length > 0) && (
                   <View style={styles.tripSummaryRow}>
                     <Text style={styles.tripSummaryLabel}>Luggage:</Text>
-                    <Text style={styles.tripSummaryValue}>{myBooking.luggage_count} item(s)</Text>
+                    <Text style={styles.tripSummaryValue}>{myBooking.luggage.map((i: any) => `${i.quantity}× ${i.type}`).join(', ')}</Text>
                   </View>
                 )}
                 <View style={styles.tripSummaryRow}>
@@ -784,11 +776,11 @@ export default function RideDetailsScreen() {
                      {booking.seats || booking.seats_booked || 1} seat(s) requested
                    </Text>
                 </View>
-                {(booking.luggage_count > 0) && (
+                {(booking.luggage && booking.luggage.length > 0) && (
                   <View style={[styles.passengerRow, { marginTop: 4 }]}>
                     <Ionicons name="briefcase-outline" size={16} color="#64748B" />
                     <Text style={styles.bookingInfo}>
-                      {booking.luggage_count} luggage item(s)
+                      {booking.luggage.map((i: any) => `${i.quantity}× ${i.type}`).join(', ')}
                     </Text>
                   </View>
                 )}

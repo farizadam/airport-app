@@ -15,9 +15,9 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 exports.createPaymentIntent = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { rideId, seats, luggage_count } = req.body;
+    const { rideId, seats, luggage } = req.body;
     
-    console.log("Payment intent request:", { userId, rideId, seats, luggage_count });
+    console.log("Payment intent request:", { userId, rideId, seats, luggage });
     
     if (!rideId || !seats) {
       return res.status(400).json({ 
@@ -69,7 +69,7 @@ exports.createPaymentIntent = async (req, res, next) => {
         passengerId: userId,
         driverId: driver?._id?.toString() || "",
         seats: seats.toString(),
-        luggage_count: (luggage_count || 0).toString(),
+        luggage: JSON.stringify(luggage || []),
       },
     };
     
@@ -221,9 +221,9 @@ exports.createOfferPaymentIntent = async (req, res, next) => {
 exports.completePayment = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { paymentIntentId, rideId, seats, luggage_count } = req.body;
+    const { paymentIntentId, rideId, seats, luggage } = req.body;
     
-    console.log("Complete payment request:", { userId, paymentIntentId, rideId, seats, luggage_count });
+    console.log("Complete payment request:", { userId, paymentIntentId, rideId, seats, luggage });
     
     if (!paymentIntentId || !rideId || !seats) {
       return res.status(400).json({ 
@@ -270,7 +270,7 @@ exports.completePayment = async (req, res, next) => {
         ride_id: rideId,
         passenger_id: userId,
         seats: seats,
-        luggage_count: parseInt(luggage_count) || 0,
+        luggage: luggage || [],
         status: 'accepted', // Already paid, so automatically accepted
         payment_status: 'paid',
         payment_method: 'card',
@@ -293,14 +293,20 @@ exports.completePayment = async (req, res, next) => {
     
     console.log("Booking created:", booking._id);
     
-    // Update ride seats
+    // Update ride seats and per-type luggage remaining
+    const luggageInc = {};
+    if (luggage && luggage.length > 0) {
+      luggage.forEach(item => {
+        luggageInc[`luggage_remaining.count_${item.type}`] = -item.quantity;
+      });
+    }
     await Ride.findByIdAndUpdate(
       rideId,
-      { $inc: { seats_left: -seats, luggage_left: -(parseInt(luggage_count) || 0) } },
+      { $inc: { seats_left: -seats, ...luggageInc } },
       { new: true }
     );
     
-    console.log(`Ride ${rideId} seats updated, removed ${seats} seats and ${luggage_count || 0} luggage`);
+    console.log(`Ride ${rideId} seats updated, removed ${seats} seats and luggage:`, luggage);
 
     // Credit driver's wallet (if driver doesn't have Stripe Connect)
     // If driver HAS Stripe Connect, the money goes directly via transfer_data
@@ -469,9 +475,9 @@ exports.createRidePayment = async (req, res, next) => {
 exports.payWithWallet = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { rideId, seats, luggage_count } = req.body;
+    const { rideId, seats, luggage } = req.body;
     
-    console.log("Wallet payment request:", { userId, rideId, seats, luggage_count });
+    console.log("Wallet payment request:", { userId, rideId, seats, luggage });
     
     if (!rideId || !seats) {
       return res.status(400).json({ 
@@ -541,7 +547,7 @@ exports.payWithWallet = async (req, res, next) => {
       ride_id: rideId,
       passenger_id: userId,
       seats: seats,
-      luggage_count: parseInt(luggage_count) || 0,
+      luggage: luggage || [],
       status: 'accepted',
       payment_status: 'paid',
       payment_method: 'wallet', // Mark as wallet payment
@@ -549,10 +555,16 @@ exports.payWithWallet = async (req, res, next) => {
     
     console.log("Booking created with wallet payment:", booking._id);
     
-    // Update ride seats
+    // Update ride seats and per-type luggage remaining
+    const luggageInc = {};
+    if (luggage && luggage.length > 0) {
+      luggage.forEach(item => {
+        luggageInc[`luggage_remaining.count_${item.type}`] = -item.quantity;
+      });
+    }
     await Ride.findByIdAndUpdate(
       rideId,
-      { $inc: { seats_left: -seats, luggage_left: -(parseInt(luggage_count) || 0) } },
+      { $inc: { seats_left: -seats, ...luggageInc } },
       { new: true }
     );
     

@@ -28,7 +28,8 @@ export interface TripItem {
   totalSeats?: number;
   luggage_capacity?: number;
   luggage_left?: number;
-  luggage_count?: number;
+  luggage_count?: number; // legacy
+  luggage?: { type: string; quantity: number }[];
   price?: number;
   direction?: TripDirection;
   driver?: {
@@ -386,15 +387,17 @@ export const TripCard = ({ item, onCancel, showCancelButton = false }: TripCardP
            )}
            <View style={[styles.tripSeats, { marginLeft: 10 }]}>
              <Ionicons name="briefcase-outline" size={14} color="#64748B" />
-             <Text style={styles.tripSeatsText}>
-               {item.luggage_capacity !== undefined
-                 ? (item.luggage_left !== undefined 
-                   ? `${item.luggage_capacity - item.luggage_left}/${item.luggage_capacity} bags` 
-                   : `${item.luggage_capacity} bags`)
-                 : item.luggage_count !== undefined
-                   ? `${item.luggage_count} bag(s)`
-                   : '0 bags'}
-             </Text>
+              <Text style={styles.tripSeatsText}>
+                {item.luggage_capacity !== undefined
+                  ? (item.luggage_left !== undefined 
+                    ? `${item.luggage_capacity - item.luggage_left}/${item.luggage_capacity} bags` 
+                    : `${item.luggage_capacity} bags`)
+                  : (item.luggage && item.luggage.length > 0)
+                    ? item.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
+                    : item.luggage_count !== undefined
+                      ? `${item.luggage_count} bag(s)`
+                      : '0 bags'}
+              </Text>
            </View>
         </View>
 

@@ -355,7 +355,9 @@ export default function RequestDetailsScreen() {
               <Ionicons name="briefcase-outline" size={20} color="#64748B" />
               <Text style={styles.detailLabel}>Luggage</Text>
               <Text style={styles.detailValue}>
-                {request.luggage_count || 0}
+                {(request.luggage && request.luggage.length > 0)
+                  ? request.luggage.filter(l => l.quantity > 0).map(l => `${l.quantity}\u00d7 ${l.type}`).join(', ')
+                  : request.luggage_count || 0}
               </Text>
             </View>
             <View style={styles.detailItem}>

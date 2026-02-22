@@ -116,7 +116,7 @@ export default function RideDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [seats, setSeats] = useState(1);
-  const [luggageCount, setLuggageCount] = useState(0);
+  const [luggage, setLuggage] = useState<{ type: string; quantity: number }[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
   const [actionId, setActionId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -235,9 +235,17 @@ export default function RideDetailsScreen() {
       return;
     }
 
-    if (luggageCount > (ride?.luggage_left ?? 0)) {
-      toast.warning("Not Enough Luggage Space", `Only ${ride?.luggage_left ?? 0} luggage spot(s) available`);
-      return;
+    // Validate per-type luggage against remaining
+    const remaining = ride?.luggage_remaining;
+    if (remaining && luggage.length > 0) {
+      for (const item of luggage) {
+        const key = `count_${item.type}` as keyof typeof remaining;
+        const available = (remaining[key] as number) ?? 0;
+        if (item.quantity > available) {
+          toast.warning("Not Enough Luggage Space", `Only ${available} spot(s) available for ${item.type}`);
+          return;
+        }
+      }
     }
 
     // Check payment method selected
@@ -254,7 +262,7 @@ export default function RideDetailsScreen() {
       
       console.log("Processing wallet payment for ride:", id, "seats:", seats);
       
-      const result = await payWithWallet(id!, seats, luggageCount);
+      const result = await payWithWallet(id!, seats, luggage);
       
       if (result.success) {
         // Refresh bookings
@@ -281,7 +289,7 @@ export default function RideDetailsScreen() {
       const response = await api.post("/payments/create-intent", {
         rideId: id,
         seats: seats,
-        luggage_count: luggageCount,
+        luggage: luggage,
       });
       
       console.log("Payment intent response:", response.data);
@@ -318,7 +326,7 @@ export default function RideDetailsScreen() {
         paymentIntentId: paymentIntentId,
         rideId: id,
         seats: seats,
-        luggage_count: luggageCount,
+        luggage: luggage,
       });
       
       console.log("Complete response:", completeResponse.data);
@@ -910,11 +918,11 @@ export default function RideDetailsScreen() {
                     requested
                   </Text>
                 </View>
-                {(booking.luggage_count ?? 0) > 0 && (
+                {booking.luggage && booking.luggage.length > 0 && (
                   <View style={styles.passengerRow}>
                     <Ionicons name="bag-handle-outline" size={16} color="#64748B" />
                     <Text style={styles.bookingInfo}>
-                      {booking.luggage_count} luggage
+                      {booking.luggage.map((item: any) => `${item.quantity}× ${item.type}`).join(', ')}
                     </Text>
                   </View>
                 )}
@@ -1063,11 +1071,19 @@ export default function RideDetailsScreen() {
 
             <View style={styles.modalInfo}>
               <Text style={styles.modalInfoText}>
-                Available: {ride.seats_left} seats
+                Available: {ride.seats_left} seat{ride.seats_left !== 1 ? 's' : ''}
               </Text>
-              <Text style={styles.modalInfoText}>
-                Luggage space: {ride.luggage_left ?? 0} / {ride.luggage_capacity ?? 0}
-              </Text>
+              <Text style={[styles.modalInfoText, { fontWeight: '600', marginTop: 4 }]}>Luggage remaining:</Text>
+              {([
+                { rk: 'count_sac',        label: '🎒 Cabin Bag' },
+                { rk: 'count_10kg',       label: '🧳 Small (10kg)' },
+                { rk: 'count_20kg',       label: '💼 Large (20kg)' },
+                { rk: 'count_hors_norme', label: '📦 Oversized' },
+              ] as { rk: string; label: string }[]).map(({ rk, label }) => (
+                <Text key={rk} style={styles.modalInfoText}>
+                  {label}: {((ride.luggage_remaining as any)?.[rk] as number) ?? 0}
+                </Text>
+              ))}
               <Text style={styles.modalInfoText}>
                 Price: {ride.price_per_seat} EUR per seat
               </Text>
@@ -1095,27 +1111,50 @@ export default function RideDetailsScreen() {
               </View>
             </View>
 
-            {/* Luggage Count Stepper */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Number of Luggage</Text>
-              <View style={styles.stepperContainer}>
-                <TouchableOpacity
-                  style={[styles.stepperButton, luggageCount <= 0 && styles.stepperButtonDisabled]}
-                  onPress={() => setLuggageCount(Math.max(0, luggageCount - 1))}
-                  disabled={luggageCount <= 0}
-                >
-                  <Ionicons name="remove" size={20} color={luggageCount <= 0 ? '#CBD5E1' : '#1E293B'} />
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{luggageCount}</Text>
-                <TouchableOpacity
-                  style={[styles.stepperButton, luggageCount >= (ride.luggage_left ?? 0) && styles.stepperButtonDisabled]}
-                  onPress={() => setLuggageCount(Math.min(ride.luggage_left ?? 0, luggageCount + 1))}
-                  disabled={luggageCount >= (ride.luggage_left ?? 0)}
-                >
-                  <Ionicons name="add" size={20} color={luggageCount >= (ride.luggage_left ?? 0) ? '#CBD5E1' : '#1E293B'} />
-                </TouchableOpacity>
-              </View>
-            </View>
+            {/* Luggage Selection — per type */}
+            <Text style={[styles.label, { marginTop: 16 }]}>Luggage</Text>
+            {([
+              { apiType: 'sac',        label: '🎒 Cabin Bag',     capacityKey: 'count_sac' },
+              { apiType: '10kg',       label: '🧳 Small (10kg)',   capacityKey: 'count_10kg' },
+              { apiType: '20kg',       label: '💼 Large (20kg)',   capacityKey: 'count_20kg' },
+              { apiType: 'hors_norme', label: '📦 Oversized',     capacityKey: 'count_hors_norme' },
+            ] as { apiType: string; label: string; capacityKey: string }[]).map(({ apiType, label, capacityKey }) => {
+              const available = ((ride.luggage_remaining as any)?.[capacityKey] as number) ?? 0;
+              const current = luggage.find(i => i.type === apiType)?.quantity ?? 0;
+              const setQty = (qty: number) => {
+                setLuggage(prev => {
+                  const filtered = prev.filter(i => i.type !== apiType);
+                  return qty > 0 ? [...filtered, { type: apiType, quantity: qty }] : filtered;
+                });
+              };
+              return (
+                <View key={apiType} style={[styles.inputContainer, { flexDirection: 'row', alignItems: 'center' }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>{label}</Text>
+                    <Text style={{ fontSize: 12, color: available > 0 ? '#64748B' : '#EF4444' }}>
+                      {available > 0 ? `${available} available` : 'Not available'}
+                    </Text>
+                  </View>
+                  <View style={styles.stepperContainer}>
+                    <TouchableOpacity
+                      style={[styles.stepperButton, current <= 0 && styles.stepperButtonDisabled]}
+                      onPress={() => setQty(Math.max(0, current - 1))}
+                      disabled={current <= 0}
+                    >
+                      <Ionicons name="remove" size={20} color={current <= 0 ? '#CBD5E1' : '#1E293B'} />
+                    </TouchableOpacity>
+                    <Text style={styles.stepperValue}>{current}</Text>
+                    <TouchableOpacity
+                      style={[styles.stepperButton, (current >= available || available === 0) && styles.stepperButtonDisabled]}
+                      onPress={() => setQty(Math.min(available, current + 1))}
+                      disabled={current >= available || available === 0}
+                    >
+                      <Ionicons name="add" size={20} color={(current >= available || available === 0) ? '#CBD5E1' : '#1E293B'} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
 
             <Text style={styles.totalPrice}>
               Total: {seats * ride.price_per_seat} EUR

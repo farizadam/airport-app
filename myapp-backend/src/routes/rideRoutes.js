@@ -17,7 +17,12 @@ const createRideSchema = Joi.object({
   datetime_start: validationRules.datetime,
   seats_total: validationRules.positiveInt,
   price_per_seat: validationRules.price,
-  luggage_capacity: Joi.number().integer().min(0).default(0),
+  luggage_capacity: Joi.object({
+    max_10kg:       Joi.number().integer().min(0).default(0),
+    max_20kg:       Joi.number().integer().min(0).default(0),
+    max_hors_norme: Joi.number().integer().min(0).default(0),
+    max_sac:        Joi.number().integer().min(0).default(0),
+  }).default({ max_10kg: 0, max_20kg: 0, max_hors_norme: 0, max_sac: 0 }),
   comment: Joi.string().max(1000).trim().allow(null, ""),
 });
 
@@ -25,7 +30,12 @@ const updateRideSchema = Joi.object({
   datetime_start: Joi.date().iso().min("now"),
   seats_total: Joi.number().integer().min(1),
   price_per_seat: Joi.number().positive().precision(2),
-  luggage_capacity: Joi.number().integer().min(0),
+  luggage_capacity: Joi.object({
+    max_10kg:       Joi.number().integer().min(0),
+    max_20kg:       Joi.number().integer().min(0),
+    max_hors_norme: Joi.number().integer().min(0),
+    max_sac:        Joi.number().integer().min(0),
+  }),
   comment: Joi.string().max(1000).trim().allow(null, ""),
   home_address: Joi.string().max(500).trim().allow(null, ""),
   home_postcode: Joi.string().max(10).trim(),

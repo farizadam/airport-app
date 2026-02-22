@@ -20,7 +20,7 @@ exports.createRequest = async (req, res, next) => {
       preferred_datetime,
       time_flexibility,
       seats_needed,
-      luggage_count,
+      luggage,
       max_price_per_seat,
       notes,
     } = req.body;
@@ -49,7 +49,7 @@ exports.createRequest = async (req, res, next) => {
       },
       preferred_datetime,
       seats_needed: seats_needed || 1,
-      luggage_count: luggage_count || 1,
+      luggage: luggage || [],
       max_price_per_seat,
       notes,
       expires_at: expiresAt,
@@ -99,7 +99,7 @@ exports.updateRequest = async (req, res, next) => {
       preferred_datetime,
       time_flexibility,
       seats_needed,
-      luggage_count,
+      luggage,
       max_price_per_seat,
       notes,
     } = req.body;
@@ -146,7 +146,7 @@ exports.updateRequest = async (req, res, next) => {
     if (preferred_datetime) request.preferred_datetime = preferred_datetime;
     if (time_flexibility) request.time_flexibility = time_flexibility;
     if (seats_needed) request.seats_needed = seats_needed;
-    if (luggage_count !== undefined) request.luggage_count = luggage_count;
+    if (luggage !== undefined) request.luggage = luggage;
     if (max_price_per_seat !== undefined)
       request.max_price_per_seat = max_price_per_seat;
     if (notes !== undefined) request.notes = notes;

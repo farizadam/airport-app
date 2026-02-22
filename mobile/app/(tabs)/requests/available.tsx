@@ -268,7 +268,11 @@ export default function AvailableRequestsScreen() {
         </View>
         <View style={styles.detailItem}>
           <Ionicons name="briefcase-outline" size={14} color="#666" />
-          <Text style={styles.detailText}>{item.luggage_count ?? 0} bag(s)</Text>
+          <Text style={styles.detailText}>
+            {(item.luggage && item.luggage.length > 0)
+              ? item.luggage.filter((l: any) => l.quantity > 0).map((l: any) => `${l.quantity}\u00d7 ${l.type}`).join(', ')
+              : `${item.luggage_count ?? 0} bag(s)`}
+          </Text>
         </View>
       </View>
 

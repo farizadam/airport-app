@@ -16,7 +16,8 @@ class BookingController {
     try {
       const { rideId } = req.params;
       const passengerId = req.user.id;
-      const { seats, pickup_location, dropoff_location, luggage_count } = req.validatedBody || req.body; // Fallback to req.body if validatedBody doesn't have them yet
+      // luggage is an array of { type: "10kg"|"20kg"|"hors_norme"|"sac", quantity: Number }
+      const { seats, pickup_location, dropoff_location, luggage } = req.validatedBody || req.body;
 
       // Get ride details
       const ride = await Ride.findById(rideId);
@@ -73,13 +74,18 @@ class BookingController {
         });
       }
 
-      // Check available luggage capacity
-      const requestedLuggage = parseInt(luggage_count) || 0;
-      if (requestedLuggage > 0 && ride.luggage_left < requestedLuggage) {
-        return res.status(400).json({
-          success: false,
-          message: `Only ${ride.luggage_left} luggage spot(s) available`,
-        });
+      // Check per-type luggage capacity
+      if (luggage && luggage.length > 0) {
+        for (const item of luggage) {
+          const capacityField = `count_${item.type}`; // e.g. count_10kg
+          const available = ride.luggage_remaining?.[capacityField] ?? 0;
+          if (item.quantity > available) {
+            return res.status(400).json({
+              success: false,
+              message: `Not enough space for ${item.type}. Available: ${available}`,
+            });
+          }
+        }
       }
 
       // Create booking
@@ -87,7 +93,7 @@ class BookingController {
         ride_id: rideId,
         passenger_id: passengerId,
         seats,
-        luggage_count: requestedLuggage,
+        luggage: luggage || [],
         pickup_location,
         dropoff_location,
       });
@@ -499,7 +505,6 @@ class BookingController {
         const rideId = booking.ride_id._id || booking.ride_id;
 
         if (oldStatus === "pending" && status === "accepted") {
-          // const ride = await Ride.findById(rideId); // Ride already populated
           if (ride.seats_left < booking.seats) {
             console.warn(`[BookingController] Not enough seats to accept booking ${id}. Ride seats left: ${ride.seats_left}, Booking seats: ${booking.seats}`);
             return res.status(400).json({
@@ -507,35 +512,37 @@ class BookingController {
               message: `Cannot accept booking. Only ${ride.seats_left} seat(s) available.`,
             });
           }
-          // Check luggage capacity
-          if (booking.luggage_count > 0 && ride.luggage_left < booking.luggage_count) {
-            console.warn(`[BookingController] Not enough luggage space to accept booking ${id}. Ride luggage left: ${ride.luggage_left}, Booking luggage: ${booking.luggage_count}`);
-            return res.status(400).json({
-              success: false,
-              message: `Cannot accept booking. Only ${ride.luggage_left} luggage spot(s) available.`,
-            });
+          // Check per-type luggage capacity
+          if (booking.luggage && booking.luggage.length > 0) {
+            for (const item of booking.luggage) {
+              const capacityField = `count_${item.type}`;
+              const available = ride.luggage_remaining?.[capacityField] ?? 0;
+              if (item.quantity > available) {
+                console.warn(`[BookingController] Not enough ${item.type} space to accept booking ${id}.`);
+                return res.status(400).json({
+                  success: false,
+                  message: `Cannot accept booking. Only ${available} spot(s) available for ${item.type}.`,
+                });
+              }
+            }
           }
           const updateInc = { seats_left: -booking.seats };
-          if (booking.luggage_count > 0) {
-            updateInc.luggage_left = -booking.luggage_count;
+          if (booking.luggage && booking.luggage.length > 0) {
+            booking.luggage.forEach(item => {
+              updateInc[`luggage_remaining.count_${item.type}`] = -item.quantity;
+            });
           }
-          await Ride.findByIdAndUpdate(
-            rideId,
-            { $inc: updateInc },
-            { new: true }
-          );
-          console.log(`[BookingController] Decremented seats_left for ride ${rideId} by ${booking.seats}, luggage_left by ${booking.luggage_count || 0}`);
+          await Ride.findByIdAndUpdate(rideId, { $inc: updateInc }, { new: true });
+          console.log(`[BookingController] Accepted booking ${id}: decremented seats and luggage counters for ride ${rideId}`);
         } else if (oldStatus === "accepted" && status === "cancelled") {
           const updateInc = { seats_left: booking.seats };
-          if (booking.luggage_count > 0) {
-            updateInc.luggage_left = booking.luggage_count;
+          if (booking.luggage && booking.luggage.length > 0) {
+            booking.luggage.forEach(item => {
+              updateInc[`luggage_remaining.count_${item.type}`] = item.quantity;
+            });
           }
-          await Ride.findByIdAndUpdate(
-            rideId,
-            { $inc: updateInc },
-            { new: true }
-          );
-          console.log(`[BookingController] Incremented seats_left for ride ${rideId} by ${booking.seats}, luggage_left by ${booking.luggage_count || 0}`);
+          await Ride.findByIdAndUpdate(rideId, { $inc: updateInc }, { new: true });
+          console.log(`[BookingController] Cancelled booking ${id}: restored seats and luggage counters for ride ${rideId}`);
         }
       }
 

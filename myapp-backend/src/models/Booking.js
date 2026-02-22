@@ -1,5 +1,22 @@
 const mongoose = require("mongoose");
 
+const luggageItemSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      required: true,
+      enum: ["10kg", "20kg", "hors_norme", "sac"],
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 1,
+    },
+  },
+  { _id: false }
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     ride_id: {
@@ -19,10 +36,9 @@ const bookingSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
-    luggage_count: {
-      type: Number,
-      default: 0,
-      min: 0,
+    luggage: {
+      type: [luggageItemSchema],
+      default: [],
     },
     status: {
       type: String,
