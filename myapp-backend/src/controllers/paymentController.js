@@ -62,7 +62,7 @@ exports.createPaymentIntent = async (req, res, next) => {
     
     let paymentIntentData = {
       amount: totalAmount,
-      currency: "eur", // Euro
+      currency: process.env.STRIPE_CURRENCY || "eur", // Dynamic currency
       payment_method_types: ["card"],
       metadata: {
         rideId: ride._id.toString(),
@@ -73,16 +73,7 @@ exports.createPaymentIntent = async (req, res, next) => {
       },
     };
     
-    // Only add transfer_data if driver has Stripe account
-    if (driver?.stripeAccountId) {
-      paymentIntentData.application_fee_amount = applicationFeeAmount;
-      paymentIntentData.transfer_data = {
-        destination: driver.stripeAccountId,
-      };
-      console.log("Payment will be split with driver:", driver.stripeAccountId);
-    } else {
-      console.log("Driver has no Stripe account - payment goes to platform only");
-    }
+    console.log("Payment will be collected by platform and credited to driver wallet via webhook");
     
     // Create PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
@@ -170,7 +161,7 @@ exports.createOfferPaymentIntent = async (req, res, next) => {
     
     let paymentIntentData = {
       amount: totalAmount,
-      currency: "eur",
+      currency: process.env.STRIPE_CURRENCY || "eur", // Dynamic currency
       payment_method_types: ["card"],
       metadata: {
         requestId: request._id.toString(),
@@ -182,16 +173,7 @@ exports.createOfferPaymentIntent = async (req, res, next) => {
       },
     };
     
-    // Only add transfer_data if driver has Stripe account
-    if (driver?.stripeAccountId) {
-      paymentIntentData.application_fee_amount = applicationFeeAmount;
-      paymentIntentData.transfer_data = {
-        destination: driver.stripeAccountId,
-      };
-      console.log("Payment will be split with driver:", driver.stripeAccountId);
-    } else {
-      console.log("Driver has no Stripe account - payment goes to platform, driver credited to wallet");
-    }
+    console.log("Offer payment will be collected by platform and credited via webhook");
     
     // Create PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
@@ -308,11 +290,11 @@ exports.completePayment = async (req, res, next) => {
     
     console.log(`Ride ${rideId} seats updated, removed ${seats} seats and luggage:`, luggage);
 
-    // Credit driver's wallet (if driver doesn't have Stripe Connect)
-    // If driver HAS Stripe Connect, the money goes directly via transfer_data
-    // If driver doesn't have Stripe Connect, we credit their wallet in our system
+    // Credit driver's wallet via our internal system
+    // The money from the PaymentIntent stays on the platform's Stripe balance
+    // This virtual balance can be withdrawn to bank later
     const driver = await User.findById(ride.driver_id);
-    if (!driver?.stripeAccountId) {
+    if (driver) {
       try {
         // Get or create driver's wallet
         const wallet = await Wallet.getOrCreateWallet(ride.driver_id);
@@ -437,12 +419,8 @@ exports.createRidePayment = async (req, res, next) => {
     // Create PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalAmount,
-      currency: "eur",
+      currency: process.env.STRIPE_CURRENCY || "eur",
       payment_method_types: ["card"],
-      application_fee_amount: applicationFeeAmount,
-      transfer_data: {
-        destination: driver.stripeAccountId,
-      },
       metadata: {
         bookingId: booking._id.toString(),
         rideId: ride._id.toString(),
@@ -451,7 +429,7 @@ exports.createRidePayment = async (req, res, next) => {
       },
     });
     
-    console.log("PaymentIntent created:", paymentIntent.id);
+    console.log("Legacy Ride PaymentIntent created (collected by platform):", paymentIntent.id);
     
     res.status(201).json({
       success: true,
@@ -719,6 +697,60 @@ exports.confirmPayment = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Payment confirmation error:", error);
+    next(error);
+  }
+};
+
+/**
+ * GET /api/v1/payments/onboarding-link
+ * Auth: required
+ *
+ * Creates a Stripe Express onboarding link for the current user.
+ */
+exports.createOnboardingLink = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    let stripeAccountId = user.stripeAccountId;
+
+    // If for some reason the account wasn't created at registration, create it now
+    if (!stripeAccountId) {
+      console.log(`Creating missing Stripe account for user ${userId}`);
+      const account = await stripe.accounts.create({
+        type: "express",
+        email: user.email,
+        capabilities: {
+          transfers: { requested: true },
+        },
+      });
+      stripeAccountId = account.id;
+      user.stripeAccountId = stripeAccountId;
+      await user.save();
+    }
+
+    // Create onboarding link
+    // Default URLs - in production these should be your app's deep links or redirect pages
+    const refresh_url = process.env.STRIPE_REAUTH_URL || "https://yourapp.com/reauth";
+    const return_url = process.env.STRIPE_DASHBOARD_URL || "https://yourapp.com/dashboard";
+
+    const accountLink = await stripe.accountLinks.create({
+      account: stripeAccountId,
+      refresh_url,
+      return_url,
+      type: "account_onboarding",
+    });
+
+    res.status(200).json({
+      success: true,
+      url: accountLink.url,
+    });
+  } catch (error) {
+    console.error("Error creating onboarding link:", error);
     next(error);
   }
 };

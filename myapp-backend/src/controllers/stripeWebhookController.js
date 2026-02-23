@@ -289,9 +289,15 @@ async function handleAccountUpdated(account) {
   const user = await User.findOne({ stripeAccountId: account.id });
 
   if (user) {
-    // You could store verification status, capabilities, etc.
+    // If payouts are enabled, mark user as Stripe verified
+    if (account.payouts_enabled) {
+      user.isStripeVerified = true;
+      await user.save();
+      console.log(`User ${user._id} marked as Stripe Verified`);
+    }
+
     console.log(
-      `User ${user._id} Stripe account updated. Charges enabled: ${account.charges_enabled}`
+      `User ${user._id} Stripe account updated. Charges enabled: ${account.charges_enabled}, Payouts enabled: ${account.payouts_enabled}`
     );
   }
 }

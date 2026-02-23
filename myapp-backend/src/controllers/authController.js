@@ -4,6 +4,7 @@ const User = require("../models/User");
 const EmailOtp = require("../models/EmailOtp");
 const admin = require("../config/firebaseAdmin");
 const cloudinary = require("cloudinary").v2;
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { loginOrRegisterWithGoogle, isProfileComplete } = require("../services/googleAuthService");
 const { loginOrRegisterWithFacebook } = require("../services/facebookAuthService");
 
@@ -196,12 +197,29 @@ class AuthController {
           .json({ success: false, message: imgErr.message });
       }
 
-      // 5. Create User
+      // 5. Create Stripe Connect Account
+      let stripeAccountId = null;
+      try {
+        const account = await stripe.accounts.create({
+          type: "express",
+          email: emailNormalized,
+          capabilities: {
+            transfers: { requested: true },
+          },
+        });
+        stripeAccountId = account.id;
+        logStep("stripe_account_create");
+      } catch (stripeErr) {
+        console.error("Stripe account creation failed:", stripeErr.message);
+        // We continue even if Stripe fails, but log it
+      }
+
+      // 6. Create User
       const hashStart = Date.now();
       const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
       logStep("password_hash");
       const userCreateStart = Date.now();
-  // Also set profile_complete on normal registration
+      // Also set profile_complete on normal registration
       const profileComplete = !!(phoneNumber && front.url && back.url);
       const user = await User.create({
         email: emailNormalized,
@@ -220,6 +238,8 @@ class AuthController {
         id_image_front_public_id: front.public_id,
         id_image_back_url: back.url,
         id_image_back_public_id: back.public_id,
+        // Store Stripe Account ID
+        stripeAccountId,
         // Ensure avatar fields exist so client/profile endpoints don't fail
         avatar_url: null,
         avatar_public_id: null,

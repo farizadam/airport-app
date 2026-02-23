@@ -84,8 +84,8 @@ export default function WithdrawScreen() {
   const handleWithdraw = async () => {
     if (!validateAmount(amount)) return;
 
-    if (!bankStatus?.connected || !bankStatus?.verified) {
-      toast.warning("Bank Account Required", "Please connect and verify your bank account before withdrawing.");
+    if (!bankStatus?.payouts_enabled) {
+      toast.warning("Payouts Not Setup", "Please complete your Stripe onboarding before withdrawing.");
       return;
     }
 
@@ -116,8 +116,7 @@ export default function WithdrawScreen() {
   const balanceEur = (wallet?.balance || 0) / 100;
   const minWithdrawal = (wallet?.minimum_withdrawal || 500) / 100;
   const canWithdraw =
-    bankStatus?.connected &&
-    bankStatus?.verified &&
+    bankStatus?.payouts_enabled &&
     parseFloat(amount || "0") >= minWithdrawal &&
     parseFloat(amount || "0") <= balanceEur;
 
@@ -183,18 +182,18 @@ export default function WithdrawScreen() {
             <Text style={styles.sectionTitle}>Withdraw To</Text>
             <View style={styles.bankCard}>
               <Ionicons
-                name={bankStatus?.verified ? "checkmark-circle" : "alert-circle"}
+                name={bankStatus?.payouts_enabled ? "checkmark-circle" : "alert-circle"}
                 size={24}
-                color={bankStatus?.verified ? "#16A34A" : "#F59E0B"}
+                color={bankStatus?.payouts_enabled ? "#16A34A" : "#F59E0B"}
               />
               <View style={styles.bankInfo}>
                 <Text style={styles.bankName}>
-                  {bankStatus?.connected
-                    ? "Connected Bank Account"
-                    : "No bank connected"}
+                  {bankStatus?.payouts_enabled
+                    ? "Payout Account Ready"
+                    : "Payouts not setup"}
                 </Text>
                 <Text style={styles.bankStatus}>
-                  {bankStatus?.message || "Please connect a bank account"}
+                  {bankStatus?.payouts_enabled ? "You can receive withdrawals" : "Complete onboarding to withdraw"}
                 </Text>
               </View>
             </View>

@@ -22,7 +22,7 @@ const payoutSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      default: "EUR",
+      default: (process.env.STRIPE_CURRENCY || "eur").toUpperCase(),
     },
     status: {
       type: String,

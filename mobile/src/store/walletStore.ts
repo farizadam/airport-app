@@ -136,6 +136,7 @@ interface WalletState {
   getBankStatus: () => Promise<void>;
   requestWithdrawal: (amount: number) => Promise<{ success: boolean; message: string }>;
   connectBankAccount: () => Promise<{ url: string } | null>;
+  setupPayouts: () => Promise<{ url: string } | null>;
   calculateEarnings: (pricePerSeat: number, seats: number) => Promise<EarningsCalculation | null>;
   payWithWallet: (rideId: string, seats: number, luggage: { type: string; quantity: number }[]) => Promise<{ success: boolean; message: string; booking?: any; newBalance?: number }>;
   clearError: () => void;
@@ -341,6 +342,25 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       return { url: response.data.data.url };
     } catch (error: any) {
       const message = error.response?.data?.message || "Failed to connect bank account";
+      set({ error: message });
+      return null;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  setupPayouts: async () => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const response = await api.get<{
+        success: boolean;
+        url: string;
+      }>("/payments/onboarding-link");
+
+      return { url: response.data.url };
+    } catch (error: any) {
+      const message = error.response?.data?.message || "Failed to setup payouts";
       set({ error: message });
       return null;
     } finally {

@@ -245,6 +245,7 @@ exports.requestWithdrawal = async (req, res, next) => {
             user_id: userId,
             wallet_id: wallet._id,
             amount,
+            currency: (process.env.STRIPE_CURRENCY || "eur").toUpperCase(),
             payout_method: "standard",
             estimated_arrival: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
             requested_at: new Date(),
@@ -265,6 +266,7 @@ exports.requestWithdrawal = async (req, res, next) => {
             gross_amount: amount,
             fee_amount: 0,
             net_amount: amount,
+            currency: (process.env.STRIPE_CURRENCY || "eur").toUpperCase(),
             status: "pending",
             reference_type: "payout",
             reference_id: payout._id,
@@ -311,7 +313,7 @@ exports.requestWithdrawal = async (req, res, next) => {
     try {
       const transfer = await stripe.transfers.create({
         amount: amount,
-        currency: "eur",
+        currency: process.env.STRIPE_CURRENCY || "eur",
         destination: user.stripeAccountId,
         metadata: {
           payout_id: payout._id.toString(),

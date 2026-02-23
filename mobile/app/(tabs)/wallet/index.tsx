@@ -29,6 +29,7 @@ export default function WalletScreen() {
     getEarningsSummary,
     getBankStatus,
     connectBankAccount,
+    setupPayouts,
     clearError,
   } = useWalletStore();
 
@@ -57,22 +58,22 @@ export default function WalletScreen() {
   };
 
   const handleConnectBank = async () => {
-    const result = await connectBankAccount();
+    const result = await setupPayouts();
     if (result?.url) {
       Linking.openURL(result.url);
     } else {
-      toast.error("Error", "Failed to start bank connection process");
+      toast.error("Error", "Failed to start payout setup process");
     }
   };
 
   const handleWithdraw = () => {
-    if (!bankStatus?.connected || !bankStatus?.verified) {
+    if (!bankStatus?.payouts_enabled) {
       Alert.alert(
-        'Bank Account Required',
-        'Please connect and verify your bank account to withdraw funds.',
+        'Payouts Not Setup',
+        'Please complete your Stripe onboarding to withdraw funds.',
         [
           { text: 'Cancel', style: "cancel" },
-          { text: 'Connect Bank', onPress: handleConnectBank },
+          { text: 'Setup Payouts', onPress: handleConnectBank },
         ]
       );
       return;
@@ -168,10 +169,10 @@ export default function WalletScreen() {
         {/* Bank Account Status */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Bank Account</Text>
-            {!bankStatus?.connected && (
+            <Text style={styles.sectionTitle}>Payout Account</Text>
+            {!bankStatus?.payouts_enabled && (
               <TouchableOpacity onPress={handleConnectBank}>
-                <Text style={styles.linkText}>Connect</Text>
+                <Text style={styles.linkText}>Setup</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -179,17 +180,17 @@ export default function WalletScreen() {
           <View style={styles.bankStatusCard}>
             <View style={styles.bankStatusRow}>
               <Ionicons
-                name={bankStatus?.verified ? "checkmark-circle" : "alert-circle"}
+                name={bankStatus?.payouts_enabled ? "checkmark-circle" : "alert-circle"}
                 size={24}
-                color={bankStatus?.verified ? "#16A34A" : "#F59E0B"}
+                color={bankStatus?.payouts_enabled ? "#16A34A" : "#F59E0B"}
               />
               <View style={styles.bankStatusInfo}>
                 <Text style={styles.bankStatusText}>
-                  {bankStatus?.message || "Not connected"}
+                  {bankStatus?.payouts_enabled ? "Payouts enabled" : "Payouts not setup"}
                 </Text>
-                {bankStatus?.connected && !bankStatus?.verified && (
+                {!bankStatus?.payouts_enabled && (
                   <TouchableOpacity onPress={handleConnectBank}>
-                    <Text style={styles.verifyLink}>Complete Verification</Text>
+                    <Text style={styles.verifyLink}>Complete Stripe Onboarding</Text>
                   </TouchableOpacity>
                 )}
               </View>

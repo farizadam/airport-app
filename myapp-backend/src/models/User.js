@@ -162,6 +162,11 @@ const userSchema = new mongoose.Schema(
       default: null,
       description: "Stripe Customer ID for payments",
     },
+    isStripeVerified: {
+      type: Boolean,
+      default: false,
+      description: "True if the user has completed Stripe Connect onboarding",
+    },
     rating: {
       type: Number,
       default: 0,

@@ -22,4 +22,7 @@ router.post("/ride", authMiddleware, paymentController.createRidePayment);
 // Legacy: Confirm payment and accept booking
 router.post("/confirm", authMiddleware, paymentController.confirmPayment);
 
+// Stripe Connect Onboarding
+router.get("/onboarding-link", authMiddleware, paymentController.createOnboardingLink);
+
 module.exports = router;
