@@ -331,10 +331,15 @@ export default function RegisterScreen() {
       // Update formData with full E.164 phone
       setFormData((prev) => ({ ...prev, phone: fullPhone }));
 
-      // DEV MODE: Skip Firebase phone auth entirely - just use 123456
-      console.log("DEV MODE: Skipping Firebase phone auth. Use code 123456");
-      setPhoneOtpSent(true);
-      toast.info("OTP Sent", "DEV MODE: Use code 123456");
+      try {
+        const confirmation = await signInWithPhoneNumber(auth, fullPhone);
+        setVerificationId(confirmation);
+        setPhoneOtpSent(true);
+        toast.info("OTP Sent", "A verification code was sent to your phone.");
+      } catch (phoneAuthErr: any) {
+        console.error("Phone auth error", phoneAuthErr);
+        toast.error("Error", phoneAuthErr.message || "Phone auth is not available in this build.");
+      }
     } catch (err: any) {
       console.error("Phone OTP send error", err);
       toast.error("Error", err.message || "Failed to send OTP");
@@ -344,12 +349,6 @@ export default function RegisterScreen() {
   };
 
   const verifyPhoneOtp = async () => {
-    // DEV MODE: Accept 123456 as bypass code
-    if (enteredPhoneOtp === "123456") {
-      toast.success("Phone Verified", "DEV: Phone verified with bypass code");
-      setStep((s) => Math.min(4, s + 1));
-      return;
-    }
 
     if (!verificationId) {
       toast.error("Error", "No verification ID. Request code first.");
