@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>879099107110-odaeo31c4indpllrlgn7hdtua168d169.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.879099107110-odaeo31c4indpllrlgn7hdtua168d169</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>879099107110-ibinl59n5hbuiv7u5nn20pctgih6odcm.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAE2Oem4mvo-kPGAe9o-D59ECmsvH_yIBU</string>
+	<key>GCM_SENDER_ID</key>
+	<string>879099107110</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.saidare.mobile</string>
+	<key>PROJECT_ID</key>
+	<string>airsaiid</string>
+	<key>STORAGE_BUCKET</key>
+	<string>airsaiid.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:879099107110:ios:3f40dc9cc4c5d1092cd3e7</string>
+	<key>DATABASE_URL</key>
+	<string>https://airsaiid-default-rtdb.europe-west1.firebasedatabase.app</string>
+</dict>
+</plist>
